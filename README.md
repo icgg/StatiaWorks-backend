@@ -57,6 +57,10 @@ scripts/
 ```
 
 ## Notes
+- **Environments / Supabase:** `NODE_ENV` toggles the DB — `development` uses the local
+  Postgres (`DATABASE_URL`/`PG*`), `production` uses **Supabase** (`SUPABASE_DB_URL`, SSL)
+  and the `*_PROD` frontend hostnames (`APP_ORIGINS_PROD`, `APP_URL_PROD`). Supabase is
+  used only as hosted Postgres (via Knex) — not its auth. See **`SUPABASE.md`**.
 - **Auth:** JWT signed with `JWT_SECRET`, delivered as an httpOnly `SameSite=Lax`
   cookie *and* in the login response body. Cookie survives refresh; the client also
   keeps a bearer copy. Middleware accepts either.
