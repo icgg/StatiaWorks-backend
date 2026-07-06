@@ -6,7 +6,7 @@
 // for the env-admin. `requireAuth` / `requireAdminAuth` reject when absent.
 
 import { verifyToken, SESSION_COOKIE, ADMIN_COOKIE } from '../utils/jwt.js'
-import { unauthorized } from './error.js'
+import { unauthorized, forbidden } from './error.js'
 import { db } from '../db/knex.js'
 
 function bearer(req) {
@@ -14,20 +14,35 @@ function bearer(req) {
   return h.startsWith('Bearer ') ? h.slice(7) : null
 }
 
-// Attach req.account if a valid user session is present (does not reject).
+// Attach req.account when a valid, active user session is present. Does not
+// reject for a missing/invalid token (that falls through to requireAuth's 401),
+// with one exception: a token that resolves to a *suspended* account is rejected
+// here with a distinct 403 (code ACCOUNT_SUSPENDED). Suspension happens
+// out-of-band (an admin flips accounts.status while the user is logged in), so
+// this is the signal the frontend keys on to tear down the stale session and
+// explain why — rather than the account silently going blank on its next call.
 export async function loadUser(req, res, next) {
-  const token = req.cookies?.[SESSION_COOKIE] || bearer(req)
-  if (token) {
+  try {
+    const token = req.cookies?.[SESSION_COOKIE] || bearer(req)
+    if (!token) return next()
+
     const payload = verifyToken(token)
-    if (payload && payload.sub && payload.role && payload.role !== 'admin') {
-      // Confirm the account still exists and isn't suspended.
-      const acct = await db('accounts').where({ id: payload.sub }).first()
-      if (acct && acct.status !== 'suspended') {
-        req.account = { id: acct.id, role: payload.role, email: acct.email, verified: acct.verified }
-      }
+    if (!payload || !payload.sub || !payload.role || payload.role === 'admin') return next()
+
+    const acct = await db('accounts').where({ id: payload.sub }).first()
+    if (!acct) return next()
+
+    if (acct.status === 'suspended') {
+      const err = forbidden('Your account has been suspended. Contact support if you believe this is a mistake.')
+      err.code = 'ACCOUNT_SUSPENDED'
+      return next(err)
     }
+
+    req.account = { id: acct.id, role: payload.role, email: acct.email, verified: acct.verified }
+    next()
+  } catch (e) {
+    next(e)
   }
-  next()
 }
 
 export function requireAuth(req, res, next) {

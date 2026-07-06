@@ -63,7 +63,10 @@ scripts/
   used only as hosted Postgres (via Knex) — not its auth. See **`SUPABASE.md`**.
 - **Auth:** JWT signed with `JWT_SECRET`, delivered as an httpOnly `SameSite=Lax`
   cookie *and* in the login response body. Cookie survives refresh; the client also
-  keeps a bearer copy. Middleware accepts either.
+  keeps a bearer copy. Middleware accepts either. `loadUser` re-reads the account on
+  every `/me/*` request, so a **suspended** account (status flipped from the admin
+  console) is rejected mid-session with a distinct `403 ACCOUNT_SUSPENDED` that the
+  app reacts to centrally — see **`app/SESSION_INVALIDATION.md`**.
 - **Email (Resend):** transactional email is sent via [Resend](https://resend.com)
   (`src/email/`) — verification & password-reset links plus new-applicant alerts to
   employers (respecting `employers.alerts_enabled`). Set `RESEND_API_KEY` + `EMAIL_FROM`

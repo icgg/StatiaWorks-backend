@@ -42,5 +42,9 @@ export function errorHandler(err, req, res, next) {
   }
   const body = { message: err.message || 'Server error' }
   if (err.details) body.details = err.details
+  // Machine-readable code for cases the frontend must branch on (e.g.
+  // ACCOUNT_SUSPENDED — see middleware/auth.js). Only surfaced for our own
+  // HttpErrors so raw driver codes never leak.
+  if (err instanceof HttpError && err.code) body.code = err.code
   res.status(status).json(body)
 }
