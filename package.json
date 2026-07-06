@@ -1,0 +1,28 @@
+{
+  "name": "statiaworks-server",
+  "version": "1.0.0",
+  "description": "StatiaWorks backend API — Express + Knex (PostgreSQL)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "migrate": "knex migrate:latest",
+    "migrate:rollback": "knex migrate:rollback",
+    "seed": "knex seed:run",
+    "hash": "node scripts/hash.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "knex": "^3.1.0",
+    "multer": "^2.2.0",
+    "node-cron": "^4.6.0",
+    "pg": "^8.13.1",
+    "resend": "^6.17.1"
+  }
+}
