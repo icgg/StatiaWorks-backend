@@ -3,6 +3,9 @@
 //  1. 02:00 — expire employer free trials whose trial_end_date has passed
 //     (trial -> false). An employer with neither `paid` nor `trial` is then
 //     *locked* (enforced by requireActiveEmployer + the frontend router guard).
+//     This and the 00:00 payment sweep both call closeLockedEmployerListings
+//     (utils/lockout.js) to force-close the locked employer's active listings off
+//     the public board — reactivation (admin verifyInvoice) auto-reopens them.
 //
 //  2. 03:00 — attachment retention sweep. Per the ToS, résumés/cover letters
 //     linked to an application become unavailable a fixed window (default 6
@@ -17,6 +20,7 @@ import path from 'node:path'
 import { db } from '../db/knex.js'
 import { env } from '../config/env.js'
 import { isUrlReferenced } from '../utils/fileRefs.js'
+import { closeLockedEmployerListings } from '../utils/lockout.js'
 
 export async function expireTrials() {
   const affected = await db('employers')
@@ -24,7 +28,12 @@ export async function expireTrials() {
     .whereNotNull('trial_end_date')
     .where('trial_end_date', '<', db.fn.now())
     .update({ trial: false })
-  if (affected) console.log(`[cron] expired ${affected} trial(s)`)
+  if (affected) {
+    console.log(`[cron] expired ${affected} trial(s)`)
+    // A trial ending with no active plan locks the account — take its listings down.
+    const closed = await closeLockedEmployerListings()
+    if (closed) console.log(`[cron] force-closed ${closed} listing(s) for locked employer(s)`)
+  }
   return affected
 }
 
@@ -82,7 +91,12 @@ export async function enforcePayments() {
       )
   `)
   const locked = result.rowCount || 0
-  if (locked) console.log(`[cron] locked ${locked} employer(s) for non-payment`)
+  if (locked) {
+    console.log(`[cron] locked ${locked} employer(s) for non-payment`)
+    // Newly-locked payers lose their public listings too.
+    const closed = await closeLockedEmployerListings()
+    if (closed) console.log(`[cron] force-closed ${closed} listing(s) for locked employer(s)`)
+  }
   return locked
 }
 

@@ -103,10 +103,14 @@ export const patchPost = asyncHandler(async (req, res) => {
     // closed_at is stamped only on the *first* close (COALESCE keeps the
     // original). This anchors the 6-month attachment-retention clock so it
     // can't be reset by toggling a posting closed → open → closed.
-    await db('jobs').where({ id }).update({ status: 'closed', closed_at: db.raw('COALESCE(closed_at, now())') })
+    // closed_by_lockout: false — this is a voluntary close, not a lockout, so it
+    // must not auto-reopen on a later reactivation.
+    await db('jobs')
+      .where({ id })
+      .update({ status: 'closed', closed_by_lockout: false, closed_at: db.raw('COALESCE(closed_at, now())') })
   } else if (action === 'reopen') {
     // Reopening keeps closed_at (the first-close timestamp) intact.
-    await db('jobs').where({ id }).update({ status: 'active' })
+    await db('jobs').where({ id }).update({ status: 'active', closed_by_lockout: false })
   } else {
     throw badRequest("Unknown action. Expected 'close' or 'reopen'.")
   }

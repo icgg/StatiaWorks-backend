@@ -13,6 +13,7 @@ import { daysSince } from '../utils/dates.js'
 import { findFlaggedClusters } from '../utils/similarity.js'
 import { ACCOUNT_STATUS, POST_MODERATION } from '../validators/enums.js'
 import { shapeInvoice } from '../utils/invoices.js'
+import { reopenLockedEmployerListings } from '../utils/lockout.js'
 
 // ---- Auth ----------------------------------------------------------------
 
@@ -245,7 +246,9 @@ export const setPostStatus = asyncHandler(async (req, res) => {
   const id = intParam(req.params.id)
   const status = req.body?.status
   assertEnum(status, POST_MODERATION, 'status')
-  const patch = { status }
+  // closed_by_lockout is cleared either way: an admin moderation action is never
+  // a lockout closure, so the posting must not auto-reopen on a reactivation.
+  const patch = { status, closed_by_lockout: false }
   // Stamp closed_at only on the first close (COALESCE keeps the original) so the
   // attachment-retention clock can't be reset by re-closing a posting.
   if (status === 'closed') patch.closed_at = db.raw('COALESCE(closed_at, now())')
@@ -324,7 +327,9 @@ export const getInvoice = asyncHandler(async (req, res) => {
 // employer on the invoice's plan. Works regardless of the employer's current
 // state, so verifying an overdue invoice UNLOCKS a locked employer. Advancing
 // next_payment_date from GREATEST(current, today) preserves any remaining paid
-// time / trial rather than shortening it.
+// time / trial rather than shortening it. Reactivating also auto-reopens the
+// listings the lockout force-closed (closed_by_lockout) — postings the employer
+// closed themselves stay closed.
 export const verifyInvoice = asyncHandler(async (req, res) => {
   const id = intParam(req.params.id)
   const invoice = await db('invoices').where({ id }).first()
@@ -350,6 +355,8 @@ export const verifyInvoice = asyncHandler(async (req, res) => {
         plan_interval: invoice.plan_interval,
         next_payment_date: trx.raw(`(GREATEST(next_payment_date, CURRENT_DATE) + ${step})::date`),
       })
+    // Bring back the listings the lockout took down (no-op if none / never locked).
+    await reopenLockedEmployerListings(invoice.employer_id, trx)
   })
   res.json({ ok: true, status: 'paid' })
 })
