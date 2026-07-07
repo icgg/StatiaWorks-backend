@@ -243,7 +243,9 @@ export const setPostStatus = asyncHandler(async (req, res) => {
   const status = req.body?.status
   assertEnum(status, POST_MODERATION, 'status')
   const patch = { status }
-  if (status === 'closed') patch.closed_at = db.fn.now()
+  // Stamp closed_at only on the first close (COALESCE keeps the original) so the
+  // attachment-retention clock can't be reset by re-closing a posting.
+  if (status === 'closed') patch.closed_at = db.raw('COALESCE(closed_at, now())')
   const count = await db('jobs').where({ id }).update(patch)
   if (!count) throw notFoundError('Post not found.')
   res.json({ ok: true, status })

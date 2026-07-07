@@ -4,11 +4,12 @@
 import { Router } from 'express'
 import { loadAdmin, requireAdminAuth } from '../middleware/auth.js'
 import * as admin from '../controllers/admin.controller.js'
+import { authLimiter } from '../middleware/rateLimit.js'
 
 const router = Router()
 
-// Auth (public).
-router.post('/auth/login', admin.login)
+// Auth (public). The login endpoint is a brute-force target — rate-limited.
+router.post('/auth/login', authLimiter, admin.login)
 router.post('/auth/logout', admin.logout)
 
 // Everything below requires an admin session.

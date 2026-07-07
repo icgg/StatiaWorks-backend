@@ -2,10 +2,11 @@
 // components already consume (the dummy shapes in app/src/data/*). Keeping this
 // in one place means the API contract lives next to the data model.
 
-import { daysSince, isoDate } from './dates.js'
+import { daysSince, isoDate, isoAddMonths } from './dates.js'
 import { formatSalary } from './salary.js'
 import { buildDocuments } from './documents.js'
 import { employerPill, seekerTab, seekerStage } from './status.js'
+import { env } from '../config/env.js'
 
 // Resolve a job's salary display string: prefer the stored verbatim string
 // (round-trip fidelity incl. "not disclosed"), else format from columns.
@@ -58,7 +59,15 @@ export function shapeEmployerPost(row, { applicants } = {}) {
     status: row.status === 'closed' ? 'closed' : 'active',
     deadline: isoDate(row.deadline),
   }
-  if (row.status === 'closed') post.closedDaysAgo = daysSince(row.closed_at)
+  if (row.status === 'closed') {
+    post.closedDaysAgo = daysSince(row.closed_at)
+    // When the attachments for this closed job are scheduled to be removed
+    // (closed_at + retention window). Drives the employer's download-before
+    // notice. Only meaningful once closed_at is set.
+    if (row.closed_at) {
+      post.attachmentsExpireOn = isoAddMonths(row.closed_at, env.attachmentRetentionMonths)
+    }
+  }
   if (fd.description) post.description = fd.description
   if (fd.responsibilities) post.responsibilities = fd.responsibilities
   if (fd.requirements) post.requirements = fd.requirements

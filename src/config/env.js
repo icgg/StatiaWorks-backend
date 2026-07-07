@@ -88,6 +88,29 @@ export const env = {
 
   uploadDir: path.resolve(ROOT, process.env.UPLOAD_DIR || 'uploads'),
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 8),
+
+  // Attachment retention: résumés/cover letters linked to an application become
+  // unavailable this many months after the job posting closes (ToS clause).
+  // The daily cleanup cron and the `attachmentsExpireOn` date the employer sees
+  // both read this single value so the policy lives in one place.
+  attachmentRetentionMonths: Number(process.env.ATTACHMENT_RETENTION_MONTHS || 6),
+
+  // Rate limiting (express-rate-limit). Windows in minutes, maxes are request
+  // counts per window. `global` is a broad ceiling; the rest guard sensitive
+  // endpoints (auth brute-force / email-send abuse, apply + upload spam, and
+  // job-posting flooding — the posting limiter keys on account AND IP).
+  rateLimit: {
+    globalWindowMin: Number(process.env.RL_GLOBAL_WINDOW_MIN || 15),
+    globalMax: Number(process.env.RL_GLOBAL_MAX || 600),
+    authWindowMin: Number(process.env.RL_AUTH_WINDOW_MIN || 15),
+    authMax: Number(process.env.RL_AUTH_MAX || 20),
+    applyWindowMin: Number(process.env.RL_APPLY_WINDOW_MIN || 60),
+    applyMax: Number(process.env.RL_APPLY_MAX || 30),
+    uploadWindowMin: Number(process.env.RL_UPLOAD_WINDOW_MIN || 60),
+    uploadMax: Number(process.env.RL_UPLOAD_MAX || 40),
+    postingWindowMin: Number(process.env.RL_POSTING_WINDOW_MIN || 60),
+    postingMax: Number(process.env.RL_POSTING_MAX || 10),
+  },
 }
 
 if (isProd && !env.supabase.dbUrl) {

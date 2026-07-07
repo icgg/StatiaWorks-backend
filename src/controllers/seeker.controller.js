@@ -4,7 +4,7 @@ import path from 'node:path'
 import { db } from '../db/knex.js'
 import { asyncHandler, badRequest, notFoundError, conflict } from '../middleware/error.js'
 import { intParam, parseJsonField } from '../middleware/validate.js'
-import { publicUrl } from '../middleware/upload.js'
+import { dedupeStored } from '../utils/fileDedup.js'
 import { shapeSeekerApplication } from '../utils/shape.js'
 import { sendNewApplicantEmail } from '../email/index.js'
 
@@ -63,9 +63,9 @@ export const apply = asyncHandler(async (req, res) => {
   const coverFile = req.files?.cover?.[0]
   const account = await db('accounts').where({ id: req.account.id }).first()
 
-  const resumeUrl = resumeFile ? publicUrl('resumes', resumeFile) : seeker.resume_url || null
+  const resumeUrl = resumeFile ? await dedupeStored('resumes', resumeFile) : seeker.resume_url || null
   if (applyCfg.requireCv && !resumeUrl) throw badRequest('This job requires a résumé.')
-  const coverUrl = coverFile ? publicUrl('cover-letters', coverFile) : null
+  const coverUrl = coverFile ? await dedupeStored('cover-letters', coverFile) : null
   if (applyCfg.requireCoverLetter && !coverUrl) throw badRequest('This job requires a cover-letter document.')
 
   const formData = {
@@ -197,7 +197,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
     country: b.country ?? seeker.country,
     island: b.island ?? seeker.island,
   }
-  if (req.file) patch.resume_url = publicUrl('resumes', req.file)
+  if (req.file) patch.resume_url = await dedupeStored('resumes', req.file)
 
   await db('seekers').where({ id: seeker.id }).update(patch)
   const updated = await getSeeker(req.account.id)

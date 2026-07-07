@@ -75,5 +75,9 @@ scripts/
 - **Guardrails:** predefined-choice fields (sector, employment type, statuses) are
   validated in the controllers *and* enforced by DB CHECK constraints.
 - **Uploads:** `uploads/{resumes,cover-letters,logos}/`; the stored URL
-  (`/uploads/...`) goes in the DB.
-```
+  (`/uploads/...`) goes in the DB. Uploads are **content-deduplicated** (a
+  `file_hashes` table) and application attachments are **retained for 6 months
+  after a job closes**, then swept by a daily cron.
+- **Storage / retention / rate limiting:** file dedup, the attachment-retention
+  cron, the `closed_at`-set-once rule, and app-wide rate limiting are documented
+  in **`STORAGE_RETENTION.md`**.

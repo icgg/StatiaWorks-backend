@@ -5,7 +5,7 @@
 import { db } from '../db/knex.js'
 import { asyncHandler, badRequest, notFoundError, forbidden } from '../middleware/error.js'
 import { intParam, assertEnum, assertEnumOptional } from '../middleware/validate.js'
-import { publicUrl } from '../middleware/upload.js'
+import { dedupeStored } from '../utils/fileDedup.js'
 import { parseSalary } from '../utils/salary.js'
 import { shapeEmployerPost, shapeApplicant } from '../utils/shape.js'
 import { canonicalFromApplicantAction } from '../utils/status.js'
@@ -100,9 +100,13 @@ export const patchPost = asyncHandler(async (req, res) => {
   const job = await ownedJob(req.employer.id, id)
   const action = req.body?.action
   if (action === 'close') {
-    await db('jobs').where({ id }).update({ status: 'closed', closed_at: db.fn.now() })
+    // closed_at is stamped only on the *first* close (COALESCE keeps the
+    // original). This anchors the 6-month attachment-retention clock so it
+    // can't be reset by toggling a posting closed → open → closed.
+    await db('jobs').where({ id }).update({ status: 'closed', closed_at: db.raw('COALESCE(closed_at, now())') })
   } else if (action === 'reopen') {
-    await db('jobs').where({ id }).update({ status: 'active', closed_at: null })
+    // Reopening keeps closed_at (the first-close timestamp) intact.
+    await db('jobs').where({ id }).update({ status: 'active' })
   } else {
     throw badRequest("Unknown action. Expected 'close' or 'reopen'.")
   }
@@ -201,7 +205,7 @@ export const updateCompany = asyncHandler(async (req, res) => {
     address: b.address ?? req.employer.address,
     city: b.city ?? req.employer.city,
   }
-  if (req.file) patch.logo_url = publicUrl('logos', req.file)
+  if (req.file) patch.logo_url = await dedupeStored('logos', req.file)
 
   await db('employers').where({ id: req.employer.id }).update(patch)
   const updated = await db('employers').where({ id: req.employer.id }).first()

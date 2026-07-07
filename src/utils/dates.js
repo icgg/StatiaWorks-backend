@@ -20,3 +20,13 @@ export function isoDate(date) {
   if (Number.isNaN(d.getTime())) return undefined
   return d.toISOString().slice(0, 10)
 }
+
+// ISO calendar date `months` after `date` (e.g. an attachment-expiry date from
+// a job's closed_at). null-safe → undefined.
+export function isoAddMonths(date, months) {
+  if (!date) return undefined
+  const d = new Date(date)
+  if (Number.isNaN(d.getTime())) return undefined
+  d.setMonth(d.getMonth() + months)
+  return d.toISOString().slice(0, 10)
+}

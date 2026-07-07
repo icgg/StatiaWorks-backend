@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser'
 import { env } from './config/env.js'
 import apiRouter from './routes/index.js'
 import { notFound, errorHandler } from './middleware/error.js'
+import { globalLimiter } from './middleware/rateLimit.js'
 
 export function createApp() {
   const app = express()
@@ -36,8 +37,9 @@ export function createApp() {
   // Health check.
   app.get('/api/health', (req, res) => res.json({ ok: true }))
 
-  // All application routes live under /api.
-  app.use('/api', apiRouter)
+  // All application routes live under /api. A broad rate-limit ceiling guards
+  // the whole API surface (static /uploads and the health check stay unthrottled).
+  app.use('/api', globalLimiter, apiRouter)
 
   // 404 + error handling (must be last).
   app.use(notFound)

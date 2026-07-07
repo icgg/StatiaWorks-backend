@@ -7,6 +7,7 @@ import { loadUser, requireAuth } from '../middleware/auth.js'
 import { requireSeeker, requireEmployer } from '../middleware/requireRole.js'
 import { loadEmployer, requireActiveEmployer } from '../middleware/requireActiveEmployer.js'
 import { applicationUpload, resumeUpload, logoUpload, handleUploadError } from '../middleware/upload.js'
+import { applyLimiter, uploadLimiter, postingIpLimiter, postingAccountLimiter } from '../middleware/rateLimit.js'
 import * as seeker from '../controllers/seeker.controller.js'
 import * as employer from '../controllers/employer.controller.js'
 import * as account from '../controllers/account.controller.js'
@@ -26,24 +27,27 @@ router.delete('/', account.deleteAccount)
 
 // ---- Seeker portal ----
 router.get('/applications', requireSeeker, seeker.listApplications)
-router.post('/applications', requireSeeker, applicationUpload, handleUploadError, seeker.apply)
+router.post('/applications', requireSeeker, applyLimiter, applicationUpload, handleUploadError, seeker.apply)
 router.patch('/applications/:id', requireSeeker, seeker.updateApplication)
 router.delete('/applications/:id', requireSeeker, seeker.deleteApplication)
 router.get('/profile', requireSeeker, seeker.getProfile)
-router.put('/profile', requireSeeker, resumeUpload, handleUploadError, seeker.updateProfile)
+router.put('/profile', requireSeeker, uploadLimiter, resumeUpload, handleUploadError, seeker.updateProfile)
 
 // ---- Employer portal (loadEmployer populates req.employer) ----
 const emp = Router()
 emp.use(requireEmployer, loadEmployer)
 emp.get('/posts', employer.listPosts)
-emp.post('/posts', requireActiveEmployer, employer.createPost)
+// Job-posting flood guard: per-account AND per-IP (both limiters must pass).
+// Placed after requireActiveEmployer so req.account is populated for the
+// account-keyed limiter.
+emp.post('/posts', requireActiveEmployer, postingIpLimiter, postingAccountLimiter, employer.createPost)
 emp.put('/posts/:id', requireActiveEmployer, employer.updatePost)
 emp.patch('/posts/:id', requireActiveEmployer, employer.patchPost)
 emp.delete('/posts/:id', requireActiveEmployer, employer.deletePost)
 emp.get('/posts/:id/applicants', employer.listApplicants)
 emp.patch('/posts/:postId/applicants/:applicantId', requireActiveEmployer, employer.setApplicantStatus)
 emp.get('/company', employer.getCompany)
-emp.put('/company', requireActiveEmployer, logoUpload, handleUploadError, employer.updateCompany)
+emp.put('/company', requireActiveEmployer, uploadLimiter, logoUpload, handleUploadError, employer.updateCompany)
 router.use(emp)
 
 export default router
