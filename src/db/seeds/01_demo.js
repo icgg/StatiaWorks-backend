@@ -170,12 +170,13 @@ const MARIA_APPS = [
 
 export async function seed(knex) {
   // Clear in FK-safe order and reset id sequences for predictable ids.
+  await knex('invoices').del()
   await knex('applications').del()
   await knex('jobs').del()
   await knex('employers').del()
   await knex('seekers').del()
   await knex('accounts').del()
-  for (const seq of ['accounts_id_seq', 'employers_id_seq', 'seekers_id_seq', 'jobs_id_seq', 'applications_id_seq']) {
+  for (const seq of ['accounts_id_seq', 'employers_id_seq', 'seekers_id_seq', 'jobs_id_seq', 'applications_id_seq', 'invoices_id_seq']) {
     await knex.raw(`ALTER SEQUENCE IF EXISTS ?? RESTART WITH 1`, [seq])
   }
 
@@ -215,6 +216,7 @@ export async function seed(knex) {
         account_id: accountId,
         paid,
         trial,
+        plan_interval: e.planInterval || 'monthly',
         flagged: false,
         alerts_enabled: true,
         trial_end_date: trial ? tsFromNow(e.trialEndsInDays ?? 30) : null,
@@ -223,6 +225,19 @@ export async function seed(knex) {
       .returning('id')
     employerIdByCompany[e.company] = emp.id
   }
+
+  // ---- Invoices (demo, to populate the billing panel + admin console) ----
+  // Golden Rock (trial): one paid history invoice, plus one pending awaiting the
+  // admin's verification (proof already uploaded). Windward (lapsed): one overdue
+  // awaiting invoice — the unpaid bill that dropped them to the locked state.
+  const grInvId = employerIdByCompany['Golden Rock Dive Center']
+  const windwardId = employerIdByCompany['Windward Construction']
+  const invoices = [
+    { employer_id: grInvId, status: 'paid', plan_interval: 'monthly', amount: 5, balance: 0, description: 'StatiaWorks Employer — monthly', due_date: daysAgo(6), created_at: tsAgo(8), paid_at: tsAgo(5), verified_at: tsAgo(5) },
+    { employer_id: grInvId, status: 'pending', plan_interval: 'monthly', amount: 5, balance: 5, description: 'StatiaWorks Employer — monthly', due_date: daysFromNow(3), created_at: tsAgo(1), proof_url: '/uploads/proofs/demo-proof.png' },
+    { employer_id: windwardId, status: 'awaiting', plan_interval: 'monthly', amount: 5, balance: 5, description: 'StatiaWorks Employer — monthly', due_date: daysAgo(5), created_at: tsAgo(7) },
+  ]
+  for (const inv of invoices) await knex('invoices').insert(inv)
 
   // ---- Seekers (standalone) ----
   const seekerIdByEmail = {}

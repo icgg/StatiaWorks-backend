@@ -12,6 +12,7 @@ import { signToken, cookieOptions, ADMIN_COOKIE } from '../utils/jwt.js'
 import { daysSince } from '../utils/dates.js'
 import { findFlaggedClusters } from '../utils/similarity.js'
 import { ACCOUNT_STATUS, POST_MODERATION } from '../validators/enums.js'
+import { shapeInvoice } from '../utils/invoices.js'
 
 // ---- Auth ----------------------------------------------------------------
 
@@ -95,6 +96,7 @@ export const getStats = asyncHandler(async (req, res) => {
   const seekers = rows.filter((r) => r.role === 'seeker')
   const [{ n: activeJobs }] = await db('jobs').where('status', 'active').count({ n: '*' })
   const [{ n: applications }] = await db('applications').count({ n: '*' })
+  const [{ n: pendingInvoices }] = await db('invoices').where('status', 'pending').count({ n: '*' })
   const clusters = findFlaggedClusters(
     employers.map((e) => ({ id: e.id, role: 'employer', companyName: e.companyName, status: e.status, createdDaysAgo: e.createdDaysAgo })),
   )
@@ -108,6 +110,7 @@ export const getStats = asyncHandler(async (req, res) => {
     pendingAccounts: rows.filter((r) => r.status === 'pending').length,
     suspendedAccounts: rows.filter((r) => r.status === 'suspended').length,
     lapsedEmployers: employers.filter((e) => e.plan === 'lapsed').length,
+    pendingInvoices: Number(pendingInvoices),
     newSignups7d: rows.filter((r) => r.createdDaysAgo <= 7).length,
     flaggedClusters: clusters.length,
   })
@@ -274,4 +277,88 @@ export const resolveFlag = asyncHandler(async (req, res) => {
     throw badRequest("Unknown action. Expected 'dismiss' or 'suspend'.")
   }
   res.json({ ok: true })
+})
+
+// ---- Invoices (manual MCB verification) ----------------------------------
+
+// Attach the employer's company + account id to a shaped invoice row.
+function shapeAdminInvoice(row) {
+  return {
+    ...shapeInvoice(row),
+    employerId: row.employer_id,
+    company: row.company,
+    employerAccountId: row.account_id,
+  }
+}
+
+export const listInvoices = asyncHandler(async (req, res) => {
+  const { status } = req.query
+  let query = db('invoices')
+    .join('employers', 'employers.id', 'invoices.employer_id')
+    .select('invoices.*', 'employers.company as company', 'employers.account_id as account_id')
+  if (status) {
+    query = query.where('invoices.status', status)
+  } else {
+    // Default to the actionable queue: bank transfers awaiting / needing review.
+    query = query.whereIn('invoices.status', ['awaiting', 'pending'])
+  }
+  // Proof-submitted (pending) first, then awaiting; newest within each.
+  const rows = await query.orderByRaw(
+    `CASE invoices.status WHEN 'pending' THEN 0 WHEN 'awaiting' THEN 1 ELSE 2 END, invoices.created_at DESC`,
+  )
+  res.json(rows.map(shapeAdminInvoice))
+})
+
+export const getInvoice = asyncHandler(async (req, res) => {
+  const id = intParam(req.params.id)
+  const row = await db('invoices')
+    .join('employers', 'employers.id', 'invoices.employer_id')
+    .select('invoices.*', 'employers.company as company', 'employers.account_id as account_id')
+    .where('invoices.id', id)
+    .first()
+  if (!row) throw notFoundError('Invoice not found.')
+  res.json(shapeAdminInvoice(row))
+})
+
+// Confirm a bank transfer arrived: mark the invoice paid and (re)activate the
+// employer on the invoice's plan. Works regardless of the employer's current
+// state, so verifying an overdue invoice UNLOCKS a locked employer. Advancing
+// next_payment_date from GREATEST(current, today) preserves any remaining paid
+// time / trial rather than shortening it.
+export const verifyInvoice = asyncHandler(async (req, res) => {
+  const id = intParam(req.params.id)
+  const invoice = await db('invoices').where({ id }).first()
+  if (!invoice) throw notFoundError('Invoice not found.')
+  if (invoice.status === 'paid') throw badRequest('This invoice is already paid.')
+  if (invoice.status === 'void') throw badRequest('This invoice was cancelled.')
+
+  const annual = invoice.plan_interval === 'annual'
+  const step = annual ? "interval '1 year'" : "interval '30 days'"
+
+  await db.transaction(async (trx) => {
+    await trx('invoices').where({ id }).update({
+      status: 'paid',
+      balance: 0,
+      paid_at: trx.fn.now(),
+      verified_at: trx.fn.now(),
+    })
+    await trx('employers')
+      .where({ id: invoice.employer_id })
+      .update({
+        paid: true,
+        trial: false,
+        plan_interval: invoice.plan_interval,
+        next_payment_date: trx.raw(`(GREATEST(next_payment_date, CURRENT_DATE) + ${step})::date`),
+      })
+  })
+  res.json({ ok: true, status: 'paid' })
+})
+
+export const voidInvoice = asyncHandler(async (req, res) => {
+  const id = intParam(req.params.id)
+  const invoice = await db('invoices').where({ id }).first()
+  if (!invoice) throw notFoundError('Invoice not found.')
+  if (invoice.status === 'paid') throw badRequest('A paid invoice cannot be voided.')
+  await db('invoices').where({ id }).update({ status: 'void' })
+  res.json({ ok: true, status: 'void' })
 })

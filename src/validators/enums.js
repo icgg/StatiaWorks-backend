@@ -42,3 +42,16 @@ export const APPLICANT_ACTIONS = ['new', 'approved', 'rejected']
 
 // Admin post-moderation actions.
 export const POST_MODERATION = ['active', 'flagged', 'removed']
+
+// Invoice lifecycle (invoices.status). `awaiting` = issued, waiting on a bank
+// transfer; `pending` = the employer uploaded proof, waiting on admin
+// verification; `paid` = admin verified; `void` = superseded/cancelled. There is
+// no persisted `overdue` — it's a time-derived flag (unpaid + past due_date).
+export const INVOICE_STATUS = ['awaiting', 'pending', 'paid', 'void']
+
+// Payment rails. Only MCB bank transfer is live; Stripe is deferred (shown as
+// "Coming soon" in the UI) — kept here so the CHECK allows it when it lands.
+export const INVOICE_METHOD = ['mcb', 'stripe']
+
+// Billing cadence (employers.plan_interval + invoices.plan_interval).
+export const PLAN_INTERVAL = ['monthly', 'annual']

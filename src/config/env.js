@@ -95,6 +95,20 @@ export const env = {
   // both read this single value so the policy lives in one place.
   attachmentRetentionMonths: Number(process.env.ATTACHMENT_RETENTION_MONTHS || 6),
 
+  // --- Payments / billing ---
+  // The MCB (Maduro & Curiel's Bank) account employers transfer to. Single
+  // source of truth surfaced in the app billing panel. TODO: replace the
+  // placeholder with the real account number (or set MCB_ACCOUNT_NUMBER in .env).
+  mcbAccountNumber: process.env.MCB_ACCOUNT_NUMBER || 'MCB-XXXX-XXXX-XXXX (TODO: fill real MCB account #)',
+  // Plan pricing. `*Amount` is the numeric charge written onto an invoice;
+  // `*Display` is the human string shown on /pricing and in billing.
+  pricing: {
+    monthlyAmount: Number(process.env.PRICE_MONTHLY || 5),
+    annualAmount: Number(process.env.PRICE_ANNUAL || 50),
+    monthlyDisplay: process.env.PRICE_MONTHLY_DISPLAY || '$5 / month',
+    annualDisplay: process.env.PRICE_ANNUAL_DISPLAY || '$50 / year',
+  },
+
   // Rate limiting (express-rate-limit). Windows in minutes, maxes are request
   // counts per window. `global` is a broad ceiling; the rest guard sensitive
   // endpoints (auth brute-force / email-send abuse, apply + upload spam, and

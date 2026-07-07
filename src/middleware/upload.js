@@ -72,6 +72,16 @@ export const logoUpload = multer({
   fileFilter: fileFilter(IMG_EXT),
 }).single('logo')
 
+// MCB payment-proof screenshot (billing). Deliberately NOT run through the
+// dedup helper — a proof is tied to one invoice and must never be shared with
+// (or garbage-collected alongside) a logo or another proof, so we store its
+// publicUrl directly.
+export const proofUpload = multer({
+  storage: storageFor('proofs'),
+  limits: { fileSize: MAX_BYTES },
+  fileFilter: fileFilter(IMG_EXT),
+}).single('proof')
+
 // Translate multer errors (e.g. file too large) into clean 400s.
 export function handleUploadError(err, req, res, next) {
   if (err instanceof multer.MulterError) {

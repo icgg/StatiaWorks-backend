@@ -30,4 +30,9 @@ router.patch('/posts/:id', admin.setPostStatus)
 router.get('/flags', admin.listFlags)
 router.post('/flags/:id/resolve', admin.resolveFlag)
 
+router.get('/invoices', admin.listInvoices)
+router.get('/invoices/:id', admin.getInvoice)
+router.post('/invoices/:id/verify', admin.verifyInvoice)
+router.post('/invoices/:id/void', admin.voidInvoice)
+
 export default router

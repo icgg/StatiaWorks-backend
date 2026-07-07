@@ -6,11 +6,12 @@ import { Router } from 'express'
 import { loadUser, requireAuth } from '../middleware/auth.js'
 import { requireSeeker, requireEmployer } from '../middleware/requireRole.js'
 import { loadEmployer, requireActiveEmployer } from '../middleware/requireActiveEmployer.js'
-import { applicationUpload, resumeUpload, logoUpload, handleUploadError } from '../middleware/upload.js'
+import { applicationUpload, resumeUpload, logoUpload, proofUpload, handleUploadError } from '../middleware/upload.js'
 import { applyLimiter, uploadLimiter, postingIpLimiter, postingAccountLimiter } from '../middleware/rateLimit.js'
 import * as seeker from '../controllers/seeker.controller.js'
 import * as employer from '../controllers/employer.controller.js'
 import * as account from '../controllers/account.controller.js'
+import * as invoice from '../controllers/invoice.controller.js'
 
 const router = Router()
 router.use(loadUser, requireAuth)
@@ -48,6 +49,10 @@ emp.get('/posts/:id/applicants', employer.listApplicants)
 emp.patch('/posts/:postId/applicants/:applicantId', requireActiveEmployer, employer.setApplicantStatus)
 emp.get('/company', employer.getCompany)
 emp.put('/company', requireActiveEmployer, uploadLimiter, logoUpload, handleUploadError, employer.updateCompany)
+// Billing actions — intentionally WITHOUT requireActiveEmployer so a locked
+// employer can still pay to reactivate.
+emp.post('/billing/request-annual', invoice.requestAnnual)
+emp.post('/billing/invoices/:id/proof', uploadLimiter, proofUpload, handleUploadError, invoice.uploadProof)
 router.use(emp)
 
 export default router

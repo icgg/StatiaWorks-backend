@@ -9,7 +9,7 @@ import { env } from './config/env.js'
 import { startCron } from './cron/index.js'
 
 // Make sure the upload subfolders exist before multer needs them.
-for (const sub of ['resumes', 'cover-letters', 'logos']) {
+for (const sub of ['resumes', 'cover-letters', 'logos', 'proofs']) {
   fs.mkdirSync(path.join(env.uploadDir, sub), { recursive: true })
 }
 

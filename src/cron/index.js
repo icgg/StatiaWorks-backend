@@ -28,6 +28,64 @@ export async function expireTrials() {
   return affected
 }
 
+// Issue the next invoice ahead of its due date so the employer can pay before
+// their service is cut off. Runs for any employer whose next_payment_date is
+// within 2 days, unless they already have an open (awaiting/pending) invoice —
+// so we never stack bills (a trial converting, a monthly renewal, or an
+// outstanding annual request all resolve to at most one open invoice). The
+// invoice snapshots the employer's current plan_interval + price. Idempotent:
+// the NOT EXISTS guard plus the partial unique index (employer_id, due_date)
+// stop a second run from creating a duplicate.
+export async function generateInvoices() {
+  const { monthlyAmount, annualAmount } = env.pricing
+  const result = await db.raw(
+    `
+    INSERT INTO invoices (employer_id, status, payment_method, plan_interval, amount, balance, description, due_date)
+    SELECT e.id, 'awaiting', 'mcb', e.plan_interval,
+           (CASE WHEN e.plan_interval = 'annual' THEN :annual ELSE :monthly END)::numeric,
+           (CASE WHEN e.plan_interval = 'annual' THEN :annual ELSE :monthly END)::numeric,
+           CASE WHEN e.plan_interval = 'annual'
+                THEN 'StatiaWorks Employer — annual'
+                ELSE 'StatiaWorks Employer — monthly' END,
+           e.next_payment_date
+    FROM employers e
+    WHERE e.next_payment_date IS NOT NULL
+      AND e.next_payment_date <= CURRENT_DATE + INTERVAL '2 days'
+      AND NOT EXISTS (
+        SELECT 1 FROM invoices i
+        WHERE i.employer_id = e.id AND i.status IN ('awaiting', 'pending')
+      )
+    ON CONFLICT DO NOTHING
+    `,
+    { monthly: monthlyAmount, annual: annualAmount },
+  )
+  const created = result.rowCount || 0
+  if (created) console.log(`[cron] generated ${created} invoice(s)`)
+  return created
+}
+
+// Cut off employers who let a bill lapse. Locks (paid -> false) any *paying*
+// employer with an `awaiting` invoice whose due date has fully elapsed
+// (DATE_TRUNC('day', NOW()) > due_date → they get the entire due day to pay).
+// `pending` invoices (proof already uploaded, awaiting admin verification) are
+// intentionally excluded so a customer who acted on time isn't cut off by
+// verification latency. Trials (paid already false) are handled by expireTrials.
+export async function enforcePayments() {
+  const result = await db.raw(`
+    UPDATE employers SET paid = false
+    WHERE paid = true
+      AND EXISTS (
+        SELECT 1 FROM invoices i
+        WHERE i.employer_id = employers.id
+          AND i.status = 'awaiting'
+          AND DATE_TRUNC('day', NOW()) > i.due_date
+      )
+  `)
+  const locked = result.rowCount || 0
+  if (locked) console.log(`[cron] locked ${locked} employer(s) for non-payment`)
+  return locked
+}
+
 // Resolve a stored '/uploads/<sub>/<file>' URL to its path on disk and unlink it
 // (best-effort). Mirrors the resolution in utils/documents.js.
 function deleteStoredFile(url) {
@@ -98,6 +156,14 @@ export async function expireAttachments() {
 }
 
 export function startCron() {
+  // Every day at 00:00 — cut off employers whose bill lapsed (end of due date).
+  cron.schedule('0 0 * * *', () => {
+    enforcePayments().catch((e) => console.error('[cron] enforcePayments failed', e))
+  })
+  // Every day at 00:15 — issue invoices coming due within 2 days.
+  cron.schedule('15 0 * * *', () => {
+    generateInvoices().catch((e) => console.error('[cron] generateInvoices failed', e))
+  })
   // Every day at 02:00 server time.
   cron.schedule('0 2 * * *', () => {
     expireTrials().catch((e) => console.error('[cron] expireTrials failed', e))
@@ -107,7 +173,11 @@ export function startCron() {
     expireAttachments().catch((e) => console.error('[cron] expireAttachments failed', e))
   })
   // Also run once shortly after boot so a long-running dev server catches up.
+  enforcePayments().catch((e) => console.error('[cron] initial enforcePayments failed', e))
+  generateInvoices().catch((e) => console.error('[cron] initial generateInvoices failed', e))
   expireTrials().catch((e) => console.error('[cron] initial expireTrials failed', e))
   expireAttachments().catch((e) => console.error('[cron] initial expireAttachments failed', e))
-  console.log('[cron] scheduled: daily trial expiry (02:00) + attachment retention sweep (03:00)')
+  console.log(
+    '[cron] scheduled: payment enforcement (00:00) + invoice generation (00:15) + trial expiry (02:00) + attachment retention sweep (03:00)',
+  )
 }

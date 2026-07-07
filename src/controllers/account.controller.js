@@ -5,10 +5,12 @@
 // employer keeps a single "New applicant" toggle backed by employers.alerts_enabled.
 
 import { db } from '../db/knex.js'
+import { env } from '../config/env.js'
 import { asyncHandler, badRequest, unauthorized } from '../middleware/error.js'
 import { assertMinLength } from '../middleware/validate.js'
 import { hashPassword, verifyPassword } from '../utils/password.js'
 import { SESSION_COOKIE, cookieOptions } from '../utils/jwt.js'
+import { shapeInvoice } from '../utils/invoices.js'
 
 async function employerOf(accountId) {
   return db('employers').where({ account_id: accountId }).first()
@@ -18,8 +20,8 @@ async function seekerOf(accountId) {
   return db('seekers').where({ account_id: accountId }).first()
 }
 
-// Flat plan price (matches /pricing).
-const PRICE = '$5 / month'
+// Plan pricing (matches /pricing). Sourced from config so app + admin agree.
+const PRICE = env.pricing.monthlyDisplay
 
 function displayDate(value) {
   if (!value) return ''
@@ -84,20 +86,35 @@ export const updateNotifications = asyncHandler(async (req, res) => {
 export const getBilling = asyncHandler(async (req, res) => {
   if (req.account.role !== 'employer') throw badRequest('Billing is for employer accounts only.')
   const emp = await employerOf(req.account.id)
+  const annual = emp.plan_interval === 'annual'
   const plan = emp.paid ? 'Subscription' : emp.trial ? 'Free trial' : 'Locked'
   const status = emp.paid
     ? 'Active'
     : emp.trial
       ? 'Trial — first month free'
       : 'Locked — add a payment method to reactivate'
+
+  const rows = await db('invoices')
+    .where({ employer_id: emp.id })
+    .orderBy([{ column: 'created_at', order: 'desc' }, { column: 'id', order: 'desc' }])
+  const invoices = rows.map(shapeInvoice)
+
   res.json({
     plan,
     status,
+    planInterval: emp.plan_interval,
     trialDaysRemaining: emp.trial ? trialDays(emp) : 0,
     renewsOn: displayDate(emp.next_payment_date),
-    price: PRICE,
-    card: null, // real payment integration deferred
-    invoices: [],
+    price: annual ? env.pricing.annualDisplay : env.pricing.monthlyDisplay,
+    prices: { monthly: env.pricing.monthlyDisplay, annual: env.pricing.annualDisplay },
+    card: null, // card-on-file (Stripe) deferred
+    invoices,
+    // Payment rails offered in the billing panel. MCB is live; Stripe deferred.
+    paymentMethods: [
+      { id: 'mcb', label: 'MCB Bank Transfer', active: true },
+      { id: 'stripe', label: 'Card (Stripe)', active: false, note: 'Coming soon' },
+    ],
+    mcbAccount: env.mcbAccountNumber,
     paid: emp.paid,
     trial: emp.trial,
     locked: !emp.paid && !emp.trial,
