@@ -37,8 +37,8 @@ export function buildDocuments({ resume_url, cover_url } = {}) {
   const docs = []
   if (resume_url) {
     docs.push({
-      name: 'Resume / CV',
-      kind: 'CV',
+      name: 'Resume/CV',
+      kind: 'Resume/CV',
       type: typeFromUrl(resume_url),
       sizeLabel: sizeLabelFor(resume_url),
       url: resume_url,

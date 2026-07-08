@@ -83,6 +83,8 @@ const GOLDEN_ROCK_POSTS = [
   {
     title: 'Dive Boat Captain', sector: 'Marine & Port', type: 'Full-time',
     salary: '$3,000 – $3,600 / mo', postedDaysAgo: 8, status: 'active', deadlineInDays: 5,
+    // Demonstrates the cover-letter toggle: a separate cover-letter upload is required to apply.
+    apply: { requireCv: true, requireCoverLetter: true, allowCoverMessage: true, questions: [] },
     applicants: [
       { fname: 'Roberto', lname: 'Silva', email: 'roberto.silva@gmail.com', phone: '+599 522 9004', address: 'Lower Town, St. Eustatius', appliedDaysAgo: 3, status: 'submitted', headline: 'Licensed captain · 12 yrs small-craft', screening: screen('Yes', 'Yes', 'Not applicable'), coverMessage: 'Local captain with a spotless safety record and STCW certification.', resume: true },
       { fname: 'Anouk', lname: 'de Windt', email: 'anouk.dewindt@gmail.com', phone: '+599 318 5561', address: 'Cherry Tree, St. Eustatius', appliedDaysAgo: 7, status: 'approved', headline: 'Boat handler · dive-charter background', screening: screen('Yes', 'Yes', 'Not applicable'), resume: true },
@@ -91,6 +93,8 @@ const GOLDEN_ROCK_POSTS = [
   {
     title: 'Reservations & Front Desk', sector: 'Hospitality', type: 'Part-time',
     salary: '$14 – $18 / hr', postedDaysAgo: 12, status: 'active', deadlineInDays: null,
+    // Demonstrates the cover-message toggle OFF: no cover-message textarea on the form.
+    apply: { requireCv: true, requireCoverLetter: false, allowCoverMessage: false, questions: [] },
     applicants: [
       { fname: 'Shanice', lname: 'Gibbs', email: 'shanice.gibbs@gmail.com', phone: '+599 416 2218', address: 'Oranjestad, St. Eustatius', appliedDaysAgo: 4, status: 'submitted', headline: 'Front-desk & bookings · 3 yrs hospitality', screening: screen('Yes', 'Yes', 'Not applicable'), coverMessage: 'Friendly and organised — I handle bookings, calls, and walk-ins with a smile.', resume: true },
     ],
