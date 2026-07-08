@@ -63,9 +63,10 @@ export const env = {
   },
 
   // --- Production database (Supabase Postgres) ---
-  // We use Supabase purely as a hosted Postgres (via Knex) — NOT its auth or
-  // REST layer. Only `dbUrl` is required in production; the project URL / API
-  // keys are optional placeholders kept for any future Supabase-SDK use.
+  // We use Supabase as a hosted Postgres (via Knex) — NOT its auth — plus its
+  // Storage for uploaded files in production (see `storage` below and
+  // storage/index.js). `dbUrl` drives Knex; `url` + `serviceRoleKey` drive the
+  // Storage client (the service-role key is server-only). `anonKey` is unused.
   supabase: {
     dbUrl: process.env.SUPABASE_DB_URL || null,
     url: process.env.SUPABASE_URL || '',
@@ -88,6 +89,20 @@ export const env = {
 
   uploadDir: path.resolve(ROOT, process.env.UPLOAD_DIR || 'uploads'),
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 8),
+
+  // --- File storage backend ---
+  // Where uploads physically live. The DB always stores the same opaque
+  // '/uploads/<sub>/<file>' URL; only the backend behind it changes:
+  //   disk     → local filesystem under uploadDir (development)
+  //   supabase → the Supabase Storage bucket below (production)
+  // Driver derives from NODE_ENV (mirroring the DB toggle) but can be forced
+  // with STORAGE_DRIVER to exercise the Supabase path locally. The bucket is
+  // deliberately named 'uploads' — the same word as the URL prefix — so no
+  // extra path mapping (or env var) is needed.
+  storage: {
+    driver: (process.env.STORAGE_DRIVER || (isProd ? 'supabase' : 'disk')).toLowerCase(),
+    bucket: process.env.SUPABASE_STORAGE_BUCKET || 'uploads',
+  },
 
   // Attachment retention: résumés/cover letters linked to an application become
   // unavailable this many months after the job posting closes (ToS clause).
@@ -129,6 +144,12 @@ export const env = {
 
 if (isProd && !env.supabase.dbUrl) {
   console.warn('[env] NODE_ENV=production but SUPABASE_DB_URL is not set')
+}
+
+if (env.storage.driver === 'supabase' && (!env.supabase.url || !env.supabase.serviceRoleKey)) {
+  console.warn(
+    '[env] storage driver is "supabase" but SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not both set',
+  )
 }
 
 // The knex connection. In production we connect to Supabase, which requires SSL

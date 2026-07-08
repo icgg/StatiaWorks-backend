@@ -2,9 +2,8 @@
 // from an application's stored file URLs. Mirrors the dummy shape in
 // employer.js: { name, kind, type, sizeLabel, url }.
 
-import fs from 'node:fs'
 import path from 'node:path'
-import { env } from '../config/env.js'
+import { objectSizeSync } from '../storage/index.js'
 
 function humanSize(bytes) {
   if (!bytes && bytes !== 0) return ''
@@ -14,18 +13,12 @@ function humanSize(bytes) {
   return `${(kb / 1024).toFixed(1)} MB`
 }
 
-// A stored url is like '/uploads/resumes/abc.pdf'; resolve it to disk to stat
-// the size (best-effort — returns '' if the file isn't found).
+// Best-effort human size label. Resolved synchronously by the storage layer:
+// the disk driver stats the file; on the Supabase driver the file isn't local
+// so the label is simply omitted (a minor cosmetic difference).
 function sizeLabelFor(url) {
-  try {
-    if (!url || !url.startsWith('/uploads/')) return ''
-    const rel = url.replace('/uploads/', '')
-    const full = path.join(env.uploadDir, rel)
-    const stat = fs.statSync(full)
-    return humanSize(stat.size)
-  } catch {
-    return ''
-  }
+  const size = objectSizeSync(url)
+  return size == null ? '' : humanSize(size)
 }
 
 function typeFromUrl(url) {

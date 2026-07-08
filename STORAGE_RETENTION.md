@@ -13,8 +13,9 @@ together. If you're changing anything about uploads, the cron, or the
 
 ## 1. Why this exists
 
-Every applicant résumé/cover letter and employer logo is written to disk under
-`backend/uploads/{resumes,cover-letters,logos}/`, and the public URL
+Every applicant résumé/cover letter and employer logo is written to the file
+store under `{resumes,cover-letters,logos}/` — local disk in dev, the Supabase
+`uploads` bucket in prod (see `backend/SUPABASE.md`) — and the public URL
 (`/uploads/<sub>/<file>`) is stored on the DB row. Two problems compound over
 time:
 
@@ -59,36 +60,38 @@ whole point of dedup), so those columns are *not* foreign keys to `file_hashes`
 
 ## 3. Deduplication on upload — `utils/fileDedup.js`
 
-Multer (`middleware/upload.js`) writes each upload to disk under a random hex
-name **before** the controller runs, so dedup happens *after* that write:
+Multer (`middleware/upload.js`) holds each upload **in memory** (a buffer); the
+controller then hands it to `dedupeStored`, which hashes it and stores it via the
+storage layer **only on a miss** — so an identical re-upload is never written at
+all:
 
 ```
-upload arrives → multer writes /uploads/resumes/<random>.pdf
+upload arrives → multer buffers it in memory
               → controller calls dedupeStored('resumes', file)
+              → miss? storage.putObject writes it (disk or bucket)
 ```
 
 `dedupeStored(sub, file)`:
 
-1. `null` in → `null` out (mirrors the old `publicUrl` null handling).
-2. Compute `sha256` of the just-written file (uploads are capped at
-   `env.maxUploadMb`, so reading the whole file is fine).
+1. `null` in → `null` out.
+2. Compute `sha256` of the uploaded buffer (uploads are capped at
+   `env.maxUploadMb`, so hashing the whole buffer is fine).
 3. Look the hash up in `file_hashes`:
-   - **Hit** → delete the just-written duplicate from disk, return the *existing*
-     URL. The DB row that triggered this upload ends up pointing at the already
-     stored file.
-   - **Miss** → insert `{ hash, url, byte_size }` (with `ON CONFLICT (hash) DO
-     NOTHING` to survive a race between two identical concurrent uploads), then
-     re-read to return the winning URL. The loser of a race deletes its now-dup
-     file.
+   - **Hit** → return the *existing* URL without storing anything. The DB row
+     that triggered this upload ends up pointing at the already stored file.
+   - **Miss** → `putObject` stores the buffer under a fresh random name, then
+     insert `{ hash, url, byte_size }` (with `ON CONFLICT (hash) DO NOTHING` to
+     survive a race between two identical concurrent uploads) and re-read to
+     return the winning URL. The loser of a race deletes its now-dup object.
 
-Wired into the three upload paths, each of which used to call
-`publicUrl(sub, file)`:
+Wired into the three upload paths:
 
 - `controllers/seeker.controller.js` → `apply` (résumé + cover) and
   `updateProfile` (profile résumé)
 - `controllers/employer.controller.js` → `updateCompany` (logo)
 
-`publicUrl` is still exported and used *inside* `dedupeStored`.
+Storage of the winning object (and its URL construction) lives in
+`storage/index.js` (`putObject` / `urlFor`).
 
 > **Effect:** byte-identical files are stored once. Estimated 5–20% storage
 > savings (more when many applicants reuse a common template or re-apply).
@@ -174,7 +177,7 @@ for **03:00** server time, and also run once at boot for catch-up. Steps:
    ```js
    for (const url of urls) {
      if (await isUrlReferenced(url)) continue      // still in use → keep
-     if (deleteStoredFile(url)) filesDeleted += 1  // fs.unlink, best-effort
+     if (await removeObject(url)) filesDeleted += 1 // storage delete, best-effort
      await db('file_hashes').where({ url }).del()  // keep the index in sync
    }
    ```
@@ -193,8 +196,10 @@ for **03:00** server time, and also run once at boot for catch-up. Steps:
   reference. Removing the row means the next identical upload is correctly treated
   as new.
 
-File-path resolution mirrors `utils/documents.js`:
-`path.join(env.uploadDir, url.replace('/uploads/', ''))`.
+Physical deletion goes through the storage layer (`storage/removeObject`), which
+resolves the `/uploads/<sub>/<file>` URL to the active backend — a local
+`fs.unlink` on the disk driver, or a bucket `remove` on the Supabase driver (see
+`backend/SUPABASE.md`). The cron is backend-agnostic; it only deals in URLs.
 
 ---
 
@@ -274,9 +279,10 @@ IPv6-key concern.
 The features were verified with an ad-hoc script (dedup collapse, ref-counted
 delete, `closed_at`-once) and a live `429` test. To re-verify manually:
 
-- **Dedup:** upload the same PDF twice via the app → one physical file in
-  `uploads/resumes`, one `file_hashes` row, both rows share the URL. A different
-  file → new file + new row.
+- **Dedup:** upload the same PDF twice via the app → one physical object in
+  `resumes/`, one `file_hashes` row, both rows share the URL. A different file →
+  new object + new row. (On the Supabase driver, "physical object" means one
+  entry in the `uploads` bucket rather than one file on disk.)
 - **Cleanup:** create a closed job with `closed_at` older than the window (and a
   past-deadline active job), import and call `expireAttachments()` directly, then
   confirm: past-deadline job auto-closed; expired job's application URLs nulled;
@@ -293,6 +299,7 @@ delete, `closed_at`-once) and a live `429` test. To re-verify manually:
 | Concern | File |
 |---|---|
 | `file_hashes` migration | `src/db/migrations/20260706140000_add_file_hashes.js` |
+| Storage layer (disk / Supabase backends) | `src/storage/index.js` |
 | Dedup helper | `src/utils/fileDedup.js` |
 | Reference counting | `src/utils/fileRefs.js` |
 | Cleanup + trial cron | `src/cron/index.js` |

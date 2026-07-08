@@ -15,11 +15,10 @@
 //     deletes the physical files + hash rows once nothing else references them.
 
 import cron from 'node-cron'
-import fs from 'node:fs'
-import path from 'node:path'
 import { db } from '../db/knex.js'
 import { env } from '../config/env.js'
 import { isUrlReferenced } from '../utils/fileRefs.js'
+import { removeObject } from '../storage/index.js'
 import { closeLockedEmployerListings } from '../utils/lockout.js'
 
 export async function expireTrials() {
@@ -100,19 +99,6 @@ export async function enforcePayments() {
   return locked
 }
 
-// Resolve a stored '/uploads/<sub>/<file>' URL to its path on disk and unlink it
-// (best-effort). Mirrors the resolution in utils/documents.js.
-function deleteStoredFile(url) {
-  try {
-    if (!url || !url.startsWith('/uploads/')) return false
-    const full = path.join(env.uploadDir, url.replace('/uploads/', ''))
-    fs.unlinkSync(full)
-    return true
-  } catch {
-    return false
-  }
-}
-
 export async function expireAttachments() {
   const months = env.attachmentRetentionMonths
 
@@ -159,7 +145,7 @@ export async function expireAttachments() {
   let filesDeleted = 0
   for (const url of urls) {
     if (await isUrlReferenced(url)) continue
-    if (deleteStoredFile(url)) filesDeleted += 1
+    if (await removeObject(url)) filesDeleted += 1
     await db('file_hashes').where({ url }).del()
   }
 

@@ -9,6 +9,7 @@ import { env } from './config/env.js'
 import apiRouter from './routes/index.js'
 import { notFound, errorHandler } from './middleware/error.js'
 import { globalLimiter } from './middleware/rateLimit.js'
+import { serveUpload } from './storage/index.js'
 
 export function createApp() {
   const app = express()
@@ -31,8 +32,15 @@ export function createApp() {
   app.use(express.urlencoded({ extended: true }))
   app.use(cookieParser())
 
-  // Serve uploaded files (résumés, cover letters, logos) statically.
-  app.use('/uploads', express.static(env.uploadDir))
+  // Serve uploaded files (résumés, cover letters, logos, proofs). On the disk
+  // driver they're served statically from uploadDir; on the Supabase driver a
+  // route streams each object back through the API (kept same-origin, so the
+  // frontend's plain '/uploads/...' links are unchanged either way).
+  if (env.storage.driver === 'supabase') {
+    app.get('/uploads/:sub/:file', serveUpload)
+  } else {
+    app.use('/uploads', express.static(env.uploadDir))
+  }
 
   // Health check.
   app.get('/api/health', (req, res) => res.json({ ok: true }))

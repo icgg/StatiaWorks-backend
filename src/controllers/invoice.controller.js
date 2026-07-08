@@ -2,24 +2,11 @@
 // upload an MCB bank-transfer proof screenshot. Both run behind loadEmployer but
 // NOT requireActiveEmployer — a *locked* employer must still be able to pay.
 
-import fs from 'node:fs'
-import path from 'node:path'
 import { db } from '../db/knex.js'
-import { env } from '../config/env.js'
 import { asyncHandler, badRequest, notFoundError } from '../middleware/error.js'
-import { publicUrl } from '../middleware/upload.js'
+import { putObject, removeObject, randomName } from '../storage/index.js'
 import { shapeInvoice, amountFor, describe, dateOnly } from '../utils/invoices.js'
 import { renderInvoicePdf } from '../pdf/invoicePdf.js'
-
-// Best-effort unlink of a stored '/uploads/<sub>/<file>' proof (on replacement).
-function deleteStoredFile(url) {
-  try {
-    if (!url || !url.startsWith('/uploads/')) return
-    fs.unlinkSync(path.join(env.uploadDir, url.replace('/uploads/', '')))
-  } catch {
-    /* ignore — orphan cleanup is non-critical */
-  }
-}
 
 // POST /me/billing/request-annual — switch to the $50/year plan. Idempotent: an
 // employer who already has an open annual invoice gets that same invoice back
@@ -144,8 +131,8 @@ export const uploadProof = asyncHandler(async (req, res) => {
     throw badRequest('This invoice can no longer accept a proof of payment.')
   }
 
-  const proofUrl = publicUrl('proofs', req.file)
-  if (invoice.proof_url && invoice.proof_url !== proofUrl) deleteStoredFile(invoice.proof_url)
+  const proofUrl = await putObject('proofs', randomName(req.file.originalname), req.file.buffer, req.file.mimetype)
+  if (invoice.proof_url && invoice.proof_url !== proofUrl) await removeObject(invoice.proof_url)
 
   const [row] = await db('invoices')
     .where({ id })
