@@ -161,9 +161,9 @@ const MARIA_APPS = [
   { title: 'Administrative Assistant', status: 'submitted', appliedDaysAgo: 1, cover: true },
   { title: 'Line Cook', status: 'submitted', appliedDaysAgo: 6, cover: false },
   { title: 'PADI Dive Instructor', status: 'approved', appliedDaysAgo: 12, reviewedDaysAgo: 5, seen: true, cover: true },
-  { title: 'Registered Nurse', status: 'approved', appliedDaysAgo: 15, reviewedDaysAgo: 3, seen: false, cover: true },
-  { title: 'Primary School Teacher', status: 'approved', appliedDaysAgo: 20, reviewedDaysAgo: 2, seen: false, cover: true },
-  { title: 'Terminal Operator', status: 'rejected', appliedDaysAgo: 18, reviewedDaysAgo: 7, seen: true, cover: false },
+  { title: 'Registered Nurse', status: 'approved', appliedDaysAgo: 15, reviewedDaysAgo: 3, seen: false, cover: true, response: "Great fit for the ward — I'll email you this week to arrange an interview." },
+  { title: 'Primary School Teacher', status: 'approved', appliedDaysAgo: 20, reviewedDaysAgo: 2, seen: false, cover: true, response: "We'd like to extend an offer! Expect an email from our office with the details." },
+  { title: 'Terminal Operator', status: 'rejected', appliedDaysAgo: 18, reviewedDaysAgo: 7, seen: true, cover: false, response: 'Thank you for applying — we’ve decided to move forward with other candidates this time.' },
   { title: 'Licensed Electrician', status: 'withdrawn', appliedDaysAgo: 22, cover: false },
   { title: 'Divemaster', status: 'submitted', appliedDaysAgo: 34, cover: true }, // job is closed → "Listing closed"
 ]
@@ -357,6 +357,7 @@ export async function seed(knex) {
       date_applied: daysAgo(m.appliedDaysAgo),
       reviewed_at: m.reviewedDaysAgo != null ? tsAgo(m.reviewedDaysAgo) : null,
       seeker_seen: m.seen ?? true,
+      employer_response: m.response || null,
       resume_url: SAMPLE,
       cover_url: m.cover ? SAMPLE : null,
       form_data: mariaSnapshot,

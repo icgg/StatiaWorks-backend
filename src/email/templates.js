@@ -105,6 +105,32 @@ export function passwordResetEmail({ name, link }) {
   }
 }
 
+export function applicationResponseEmail({ name, company, jobTitle, message, link }) {
+  const hi = name ? `Hi ${name},` : 'Hi,'
+  const who = company || 'The employer'
+  const quote = message
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 16px;">
+        <tr><td style="border-left:3px solid ${TEAL};background:${SAND};border-radius:0 8px 8px 0;padding:12px 16px;font-size:15px;line-height:1.6;color:${INK};font-style:italic;">${message}</td></tr>
+      </table>`
+    : ''
+  const body =
+    p(hi) +
+    p(`<strong>${who}</strong> has responded to your application for <strong>${jobTitle}</strong>.`) +
+    quote +
+    button('View in your portal', link) +
+    p(`<span style="font-size:13px;color:${MUTED};">Open your StatiaWorks portal to see the full update.${message ? ' You can reply to the employer by email from your applications.' : ''}</span>`) +
+    fallbackLink(link)
+  return {
+    subject: `Update on your application for ${jobTitle}`,
+    html: layout({
+      heading: 'You have a response',
+      body,
+      preheader: `${who} responded to your application for ${jobTitle}.`,
+    }),
+    text: `${hi}\n\n${who} has responded to your application for "${jobTitle}".${message ? `\n\n"${message}"` : ''}\n\nView it in your portal:\n${link}\n\n— StatiaWorks`,
+  }
+}
+
 export function newApplicantEmail({ company, jobTitle, applicantName, headline, appliedOn, link }) {
   const who = applicantName || 'A new candidate'
   const body =

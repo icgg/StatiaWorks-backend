@@ -94,6 +94,7 @@ export function shapeApplicant(row) {
     coverMessage: fd.coverMessage || '',
     screening: fd.screening || {},
     customAnswers: fd.customAnswers || {},
+    employerResponse: row.employer_response || '', // the note sent on approve/reject
     documents: buildDocuments(row),
   }
 }
@@ -118,6 +119,9 @@ export function shapeSeekerApplication(row) {
   if (row.reviewed_at) {
     app.reviewedDaysAgo = daysSince(row.reviewed_at)
     if (!row.seeker_seen) app.isNew = true
+    // The employer's decision message + a contact for the "Reply by email" seam.
+    app.employerResponse = row.employer_response || ''
+    app.employerEmail = row.employer_email || ''
   }
   return app
 }

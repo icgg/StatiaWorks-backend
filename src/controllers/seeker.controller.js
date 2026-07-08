@@ -17,6 +17,7 @@ function applicationsQuery(seekerId) {
   return db('applications')
     .join('jobs', 'jobs.id', 'applications.job_id')
     .join('employers', 'employers.id', 'jobs.employer_id')
+    .join('accounts', 'accounts.id', 'employers.account_id')
     .where('applications.seeker_id', seekerId)
     .select(
       'applications.id',
@@ -24,6 +25,7 @@ function applicationsQuery(seekerId) {
       'applications.date_applied',
       'applications.reviewed_at',
       'applications.seeker_seen',
+      'applications.employer_response',
       'applications.cover_url',
       'applications.form_data',
       'applications.job_id',
@@ -34,6 +36,7 @@ function applicationsQuery(seekerId) {
       'jobs.employment_type',
       'jobs.form_data as job_form_data',
       'employers.company as company',
+      'accounts.email as employer_email', // for the seeker's "Reply by email" seam
     )
 }
 

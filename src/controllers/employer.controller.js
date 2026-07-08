@@ -10,6 +10,10 @@ import { parseSalary } from '../utils/salary.js'
 import { shapeEmployerPost, shapeApplicant } from '../utils/shape.js'
 import { canonicalFromApplicantAction } from '../utils/status.js'
 import { EMPLOYMENT_TYPES, SECTORS, APPLICANT_ACTIONS } from '../validators/enums.js'
+import { sendApplicationResponseEmail } from '../email/index.js'
+
+// Cap the employer's decision message so a stray paste can't bloat the row.
+const RESPONSE_MAX = 1000
 
 // ---- Posts ---------------------------------------------------------------
 
@@ -139,7 +143,7 @@ export const listApplicants = asyncHandler(async (req, res) => {
 export const setApplicantStatus = asyncHandler(async (req, res) => {
   const postId = intParam(req.params.postId, 'postId')
   const applicantId = intParam(req.params.applicantId, 'applicantId')
-  await ownedJob(req.employer.id, postId)
+  const job = await ownedJob(req.employer.id, postId)
 
   const action = req.body?.status
   assertEnum(action, APPLICANT_ACTIONS, 'status')
@@ -148,16 +152,49 @@ export const setApplicantStatus = asyncHandler(async (req, res) => {
   const app = await db('applications').where({ id: applicantId, job_id: postId }).first()
   if (!app) throw notFoundError('Applicant not found.')
 
+  const decided = canonical === 'approved' || canonical === 'rejected'
+  const message = decided ? String(req.body?.message || '').trim().slice(0, RESPONSE_MAX) : ''
+
   const patch = { status: canonical }
-  if (canonical === 'approved' || canonical === 'rejected') {
+  if (decided) {
     patch.reviewed_at = db.fn.now()
     patch.seeker_seen = false // surfaces the "new response" dot to the seeker
+    patch.employer_response = message || null // the note shown to the applicant
   } else {
+    // Reverting to "new" clears the decision and its message.
     patch.reviewed_at = null
+    patch.employer_response = null
   }
   const [row] = await db('applications').where({ id: applicantId }).update(patch).returning('*')
+
+  // Notify the applicant of the decision (best-effort — never fails the request).
+  if (decided) await notifySeekerOfResponse(app.seeker_id, req.employer.company, job.title, message)
+
   res.json(shapeApplicant(row))
 })
+
+// Email the seeker that the employer has responded to their application.
+// Best-effort: a lookup/mail failure can never fail the decision itself
+// (sendEmail also never throws). We always notify on a decision — the seeker
+// notification toggles were simplified away (see overview §9).
+async function notifySeekerOfResponse(seekerId, company, jobTitle, message) {
+  try {
+    const seeker = await db('seekers')
+      .join('accounts', 'accounts.id', 'seekers.account_id')
+      .where('seekers.id', seekerId)
+      .first('seekers.fname', 'accounts.email')
+    if (!seeker || !seeker.email) return
+    await sendApplicationResponseEmail({
+      email: seeker.email,
+      name: seeker.fname,
+      company,
+      jobTitle,
+      message,
+    })
+  } catch (err) {
+    console.error('[email] application-response alert failed:', err)
+  }
+}
 
 // ---- Company profile -----------------------------------------------------
 

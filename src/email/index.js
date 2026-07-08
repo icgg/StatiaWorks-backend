@@ -4,7 +4,7 @@
 
 import { env } from '../config/env.js'
 import { sendEmail } from './mailer.js'
-import { verificationEmail, passwordResetEmail, newApplicantEmail } from './templates.js'
+import { verificationEmail, passwordResetEmail, newApplicantEmail, applicationResponseEmail } from './templates.js'
 
 const appLink = (path) => `${env.appUrl}${path}`
 
@@ -27,5 +27,10 @@ export function sendNewApplicantEmail({ email, company, jobId, jobTitle, applica
     appliedOn,
     link: appLink(`/employer/posts/${jobId}/applicants`),
   })
+  return sendEmail({ to: email, ...msg })
+}
+
+export function sendApplicationResponseEmail({ email, name, company, jobTitle, message }) {
+  const msg = applicationResponseEmail({ name, company, jobTitle, message, link: appLink('/portal') })
   return sendEmail({ to: email, ...msg })
 }
