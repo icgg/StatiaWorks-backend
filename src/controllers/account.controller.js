@@ -140,6 +140,9 @@ export const deleteAccount = asyncHandler(async (req, res) => {
         const jobIds = (await trx('jobs').where({ employer_id: emp.id }).select('id')).map((j) => j.id)
         if (jobIds.length) await trx('applications').whereIn('job_id', jobIds).del()
         await trx('jobs').where({ employer_id: emp.id }).del()
+        // Invoices reference the employer (invoices.employer_id) and would block
+        // the delete; clear them before the employer row.
+        await trx('invoices').where({ employer_id: emp.id }).del()
         await trx('employers').where({ id: emp.id }).del()
       }
     } else {
