@@ -37,8 +37,10 @@ export const ACCOUNT_STATUS = ['active', 'suspended', 'pending']
 // Salary period suffixes the job creator offers.
 export const SALARY_PERIODS = ['mo', 'hr', 'yr']
 
-// What an employer may set an applicant to (maps to canonical status).
-export const APPLICANT_ACTIONS = ['new', 'approved', 'rejected']
+// What an employer may set an applicant to (maps to canonical status). Screening
+// is a one-time terminal decision — there is no revert to "new", so the only
+// valid actions are the two final outcomes.
+export const APPLICANT_ACTIONS = ['approved', 'rejected']
 
 // Admin post-moderation actions.
 export const POST_MODERATION = ['active', 'flagged', 'removed']

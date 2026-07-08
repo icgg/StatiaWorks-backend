@@ -3,7 +3,7 @@
 // also pass requireActiveEmployer (lockout enforcement).
 
 import { db } from '../db/knex.js'
-import { asyncHandler, badRequest, notFoundError, forbidden } from '../middleware/error.js'
+import { asyncHandler, badRequest, notFoundError, forbidden, conflict } from '../middleware/error.js'
 import { intParam, assertEnum, assertEnumOptional } from '../middleware/validate.js'
 import { dedupeStored } from '../utils/fileDedup.js'
 import { parseSalary } from '../utils/salary.js'
@@ -146,29 +146,30 @@ export const setApplicantStatus = asyncHandler(async (req, res) => {
   const job = await ownedJob(req.employer.id, postId)
 
   const action = req.body?.status
-  assertEnum(action, APPLICANT_ACTIONS, 'status')
+  assertEnum(action, APPLICANT_ACTIONS, 'status') // 'approved' | 'rejected'
   const canonical = canonicalFromApplicantAction(action)
 
   const app = await db('applications').where({ id: applicantId, job_id: postId }).first()
   if (!app) throw notFoundError('Applicant not found.')
 
-  const decided = canonical === 'approved' || canonical === 'rejected'
-  const message = decided ? String(req.body?.message || '').trim().slice(0, RESPONSE_MAX) : ''
+  // Screening is a one-time, terminal decision. Once approved/rejected it is
+  // final — no re-deciding and no revert to "new" (avoids status churn that
+  // would create friction for the applicant).
+  if (app.status === 'approved' || app.status === 'rejected') {
+    throw conflict('This application has already been reviewed — the decision is final.')
+  }
 
-  const patch = { status: canonical }
-  if (decided) {
-    patch.reviewed_at = db.fn.now()
-    patch.seeker_seen = false // surfaces the "new response" dot to the seeker
-    patch.employer_response = message || null // the note shown to the applicant
-  } else {
-    // Reverting to "new" clears the decision and its message.
-    patch.reviewed_at = null
-    patch.employer_response = null
+  const message = String(req.body?.message || '').trim().slice(0, RESPONSE_MAX)
+  const patch = {
+    status: canonical,
+    reviewed_at: db.fn.now(),
+    seeker_seen: false, // surfaces the "new response" dot to the seeker
+    employer_response: message || null, // the note shown to the applicant
   }
   const [row] = await db('applications').where({ id: applicantId }).update(patch).returning('*')
 
   // Notify the applicant of the decision (best-effort — never fails the request).
-  if (decided) await notifySeekerOfResponse(app.seeker_id, req.employer.company, job.title, message)
+  await notifySeekerOfResponse(app.seeker_id, req.employer.company, job.title, message)
 
   res.json(shapeApplicant(row))
 })

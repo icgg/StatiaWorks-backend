@@ -7,9 +7,11 @@ export function employerPill(status) {
   return status === 'submitted' ? 'new' : status
 }
 
-// Employer action ('new'|'approved'|'rejected') -> canonical status.
+// Employer action -> canonical status. Screening is terminal, so the only
+// actions are the final outcomes ('approved'|'rejected'), which are already
+// canonical — this stays as the single mapping point should that ever change.
 export function canonicalFromApplicantAction(action) {
-  return action === 'new' ? 'submitted' : action
+  return action
 }
 
 // Seeker tab bucket. `jobLive` = the posting still exists and is open; a gone /
