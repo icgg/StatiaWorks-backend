@@ -52,7 +52,9 @@ emp.put('/company', requireActiveEmployer, uploadLimiter, logoUpload, handleUplo
 // Billing actions — intentionally WITHOUT requireActiveEmployer so a locked
 // employer can still pay to reactivate.
 emp.post('/billing/request-annual', invoice.requestAnnual)
+emp.post('/billing/request-monthly', invoice.revertMonthly)
 emp.post('/billing/invoices/:id/proof', uploadLimiter, proofUpload, handleUploadError, invoice.uploadProof)
+emp.get('/billing/invoices/:id/invoice.pdf', invoice.downloadInvoicePdf)
 router.use(emp)
 
 export default router

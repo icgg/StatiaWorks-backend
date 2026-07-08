@@ -103,6 +103,10 @@ export const getBilling = asyncHandler(async (req, res) => {
   res.json({
     plan,
     status,
+    // The employer's own id, surfaced so the billing panel can tell the employer
+    // to write their `EMP-<id>` reference in the bank-transfer notes (this, not an
+    // invoice number, is what the admin matches a payment against).
+    employerId: emp.id,
     planInterval: emp.plan_interval,
     trialDaysRemaining: emp.trial ? trialDays(emp) : 0,
     renewsOn: displayDate(emp.next_payment_date),

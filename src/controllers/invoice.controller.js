@@ -9,6 +9,7 @@ import { env } from '../config/env.js'
 import { asyncHandler, badRequest, notFoundError } from '../middleware/error.js'
 import { publicUrl } from '../middleware/upload.js'
 import { shapeInvoice, amountFor, describe, dateOnly } from '../utils/invoices.js'
+import { renderInvoicePdf } from '../pdf/invoicePdf.js'
 
 // Best-effort unlink of a stored '/uploads/<sub>/<file>' proof (on replacement).
 function deleteStoredFile(url) {
@@ -88,6 +89,47 @@ export const requestAnnual = asyncHandler(async (req, res) => {
   res.status(201).json({ ok: true, invoice: shapeInvoice(invoice) })
 })
 
+// POST /me/billing/request-monthly — undo an unpaid "switch to annual". Converts
+// the open (awaiting) annual invoice back to monthly IN PLACE — the same invoice
+// row is repriced rather than voided-and-reissued, so this can't run up the
+// invoice ids. Only touches an *awaiting* invoice: a `pending` one (proof already
+// uploaded) is left for the admin to resolve, and there is nothing to do once an
+// annual plan has actually been paid (the employer must contact us to downgrade).
+export const revertMonthly = asyncHandler(async (req, res) => {
+  const emp = req.employer
+
+  const open = await db('invoices')
+    .where({ employer_id: emp.id })
+    .whereIn('status', ['awaiting', 'pending'])
+    .orderBy('id', 'desc')
+    .first()
+
+  // Nothing open, or already a monthly invoice — no-op (idempotent).
+  if (!open || open.plan_interval === 'monthly') {
+    return res.status(200).json({ ok: true, invoice: open ? shapeInvoice(open) : null })
+  }
+
+  // Proof submitted — don't disturb an invoice already in the verification queue.
+  if (open.status === 'pending') {
+    throw badRequest(
+      'You have a payment awaiting verification. Please wait for it to be confirmed before switching plans.',
+    )
+  }
+
+  // An awaiting annual invoice — reprice this same row to monthly.
+  const [row] = await db('invoices')
+    .where({ id: open.id })
+    .update({
+      plan_interval: 'monthly',
+      amount: amountFor('monthly'),
+      balance: amountFor('monthly'),
+      description: describe('monthly'),
+    })
+    .returning('*')
+
+  res.status(200).json({ ok: true, invoice: shapeInvoice(row) })
+})
+
 // POST /me/billing/invoices/:id/proof — attach an MCB payment-proof screenshot.
 // Uploading does NOT satisfy the invoice; it flips it to `pending` so the admin
 // is prompted to verify the transfer.
@@ -111,4 +153,33 @@ export const uploadProof = asyncHandler(async (req, res) => {
     .returning('*')
 
   res.json({ ok: true, invoice: shapeInvoice(row) })
+})
+
+// GET /me/billing/invoices/:id/invoice.pdf — stream a generated receipt for a
+// PAID invoice, opened in a new tab. The document is rendered on the fly (never
+// stored) and numbered by the employer's OWN invoice sequence (their i-th
+// invoice) rather than the DB id, so the internal id is never exposed.
+export const downloadInvoicePdf = asyncHandler(async (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id)) throw badRequest('Invalid invoice id.')
+
+  const invoice = await db('invoices').where({ id, employer_id: req.employer.id }).first()
+  if (!invoice) throw notFoundError('Invoice not found.')
+  if (invoice.status !== 'paid') {
+    throw badRequest('An invoice is only available once the payment has been verified.')
+  }
+
+  // The employer's i-th invoice: 1-based position among all of their invoices in
+  // creation order. Obfuscates the sequential DB id while staying stable.
+  const rows = await db('invoices')
+    .where({ employer_id: req.employer.id })
+    .orderBy('id', 'asc')
+    .select('id')
+  const ordinal = rows.findIndex((r) => r.id === invoice.id) + 1
+
+  const pdf = await renderInvoicePdf({ invoice, employer: req.employer, ordinal })
+
+  res.set('Content-Type', 'application/pdf')
+  res.set('Content-Disposition', `inline; filename="StatiaWorks-Invoice-${ordinal}.pdf"`)
+  res.send(pdf)
 })
