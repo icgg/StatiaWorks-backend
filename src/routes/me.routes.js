@@ -22,7 +22,6 @@ router.put('/password', account.changePassword)
 router.get('/notifications', account.getNotifications)
 router.put('/notifications', account.updateNotifications)
 router.get('/billing', account.getBilling)
-router.post('/billing/cancel', account.cancelSubscription)
 router.post('/deactivate', account.deactivate)
 router.delete('/', account.deleteAccount)
 

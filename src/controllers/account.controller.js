@@ -11,7 +11,6 @@ import { assertMinLength } from '../middleware/validate.js'
 import { hashPassword, verifyPassword } from '../utils/password.js'
 import { SESSION_COOKIE, cookieOptions } from '../utils/jwt.js'
 import { shapeInvoice } from '../utils/invoices.js'
-import { closeLockedEmployerListings } from '../utils/lockout.js'
 
 async function employerOf(accountId) {
   return db('employers').where({ account_id: accountId }).first()
@@ -124,16 +123,6 @@ export const getBilling = asyncHandler(async (req, res) => {
     trial: emp.trial,
     locked: !emp.paid && !emp.trial,
   })
-})
-
-export const cancelSubscription = asyncHandler(async (req, res) => {
-  if (req.account.role !== 'employer') throw badRequest('Only employer accounts have a subscription.')
-  // Ending the subscription drops the account to the locked state, which also
-  // force-closes the employer's active listings off the public board (they
-  // auto-reopen if the account is later reactivated).
-  await db('employers').where({ account_id: req.account.id }).update({ paid: false, trial: false })
-  await closeLockedEmployerListings()
-  res.json({ ok: true })
 })
 
 export const deactivate = asyncHandler(async (req, res) => {

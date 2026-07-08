@@ -114,18 +114,6 @@ let appId
   ok('admin route rejects no token', noAuth.status === 401)
 }
 
-// --- Employer lockout: cancel subscription on a paying employer then check ---
-{
-  const payTok = await login('jobs@dugginssupermarket.com')
-  await fetch(`${B}/me/billing/cancel`, { method: 'POST', headers: auth(payTok) })
-  // now locked → creating a post should 403
-  const r = await fetch(`${B}/me/posts`, {
-    method: 'POST', headers: { ...auth(payTok), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'X', category: 'Retail', type: 'Full-time', salary: '$1 / hr' }),
-  })
-  ok('locked employer blocked from posting', r.status === 403, `-> ${r.status}`)
-}
-
 console.log('\n' + results.join('\n') + '\n')
 const failed = results.filter((r) => r.startsWith('FAIL')).length
 console.log(failed ? `${failed} FAILED` : 'ALL PASSED')
