@@ -32,9 +32,13 @@ async function firstName(account) {
   return row?.fname || ''
 }
 
-function issueSession(res, account, role) {
-  const jwt = signToken({ sub: account.id, role })
-  res.cookie(SESSION_COOKIE, jwt, cookieOptions())
+// `remember` controls session persistence (the login "Remember me" toggle):
+// true → a persistent cookie + matching long-lived token (survives a browser
+// restart); false → a session cookie the browser drops when it closes. New
+// signups always issue a remembered session.
+function issueSession(res, account, role, remember = true) {
+  const jwt = signToken({ sub: account.id, role }, { remember })
+  res.cookie(SESSION_COOKIE, jwt, cookieOptions({ remember }))
   return {
     token: jwt,
     user: { id: account.id, email: account.email, role, verified: account.verified },
@@ -42,7 +46,7 @@ function issueSession(res, account, role) {
 }
 
 export const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body || {}
+  const { email, password, remember } = req.body || {}
   requireFields(req.body, ['email', 'password'])
   const account = await db('accounts').whereRaw('lower(email) = lower(?)', [email]).first()
   if (!account) throw unauthorized('Invalid email or password.')
@@ -56,7 +60,8 @@ export const login = asyncHandler(async (req, res) => {
   if (!role) throw unauthorized('This account is not set up correctly.')
 
   await db('accounts').where({ id: account.id }).update({ last_logged_in: db.fn.now() })
-  res.json(issueSession(res, account, role))
+  // Default remembered when the flag is absent, preserving prior persistent behaviour.
+  res.json(issueSession(res, account, role, remember !== false))
 })
 
 export const signupSeeker = asyncHandler(async (req, res) => {
