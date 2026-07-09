@@ -13,6 +13,7 @@ import { globalLimiter } from './middleware/rateLimit.js'
 import { loadUser, loadAdmin } from './middleware/auth.js'
 import { authorizeUpload } from './middleware/uploadAccess.js'
 import { serveUpload } from './storage/index.js'
+import { jobShare } from './controllers/share.controller.js'
 
 export function createApp() {
   const app = express()
@@ -68,6 +69,12 @@ export function createApp() {
   // links are unchanged either way. (Replaces the previous unauthenticated
   // express.static / open route.)
   app.get('/uploads/:sub/:file', loadUser, loadAdmin, authorizeUpload, serveUpload)
+
+  // Job-share landing (public, no /api prefix). Serves per-job OpenGraph meta so
+  // links pasted into WhatsApp/Facebook unfurl into a rich card, then redirects a
+  // human to the SPA job page. Shared as origin/j/:id (dev: Vite proxy; prod:
+  // static-site rewrite). See controllers/share.controller.js.
+  app.get('/j/:id', jobShare)
 
   // Health check.
   app.get('/api/health', (req, res) => res.json({ ok: true }))
