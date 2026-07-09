@@ -5,8 +5,10 @@
 // Populates `req.account = { id, role }` for user sessions, or `req.admin = true`
 // for the env-admin. `requireAuth` / `requireAdminAuth` reject when absent.
 
+import crypto from 'node:crypto'
 import { verifyToken, SESSION_COOKIE, ADMIN_COOKIE } from '../utils/jwt.js'
-import { unauthorized, forbidden } from './error.js'
+import { env } from '../config/env.js'
+import { unauthorized, forbidden, notFoundError } from './error.js'
 import { db } from '../db/knex.js'
 
 function bearer(req) {
@@ -62,5 +64,24 @@ export function loadAdmin(req, res, next) {
 
 export function requireAdminAuth(req, res, next) {
   if (!req.admin) return next(unauthorized('Admin authentication required'))
+  next()
+}
+
+// Pre-shared key gate for the whole admin surface (mounted ahead of the admin
+// login). When env.adminApiKey is set, a request must present a matching
+// `X-Admin-Key` header; a miss returns 404 (not 401) so the admin API is
+// invisible — an anonymous probe can't even tell the surface exists. The
+// comparison is constant-time. When the key is unset the gate is a no-op, so
+// local dev and tests don't need it. This is defense-in-depth on top of the
+// admin password/JWT, meaningful only while the admin client is private (runs on
+// a trusted machine); a public admin SPA can't hold the secret. See env.js.
+export function requireAdminKey(req, res, next) {
+  const expected = env.adminApiKey
+  if (!expected) return next() // gate disabled
+  const got = req.get('X-Admin-Key') || ''
+  const a = Buffer.from(got)
+  const b = Buffer.from(expected)
+  const ok = a.length === b.length && crypto.timingSafeEqual(a, b)
+  if (!ok) return next(notFoundError())
   next()
 }

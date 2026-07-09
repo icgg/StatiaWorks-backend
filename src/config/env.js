@@ -91,6 +91,15 @@ export const env = {
 
   adminEmail: (process.env.ADMIN_EMAIL || '').toLowerCase(),
   adminPasswordHash: process.env.ADMIN_PASSWORD_HASH || '',
+  // Optional pre-shared key that gates the ENTIRE admin surface (incl. the login
+  // endpoint). When set, every /admin/* request must carry a matching
+  // `X-Admin-Key` header or it 404s — hiding the admin API from the public
+  // internet. Defense-in-depth for the phase where the admin console runs only
+  // on a trusted/private machine (which can actually keep the secret); a public
+  // browser SPA cannot, so this never replaces the admin password. Unset ⇒ the
+  // gate is disabled (local dev / tests stay frictionless). See
+  // middleware/auth.js `requireAdminKey`.
+  adminApiKey: process.env.ADMIN_API_KEY || '',
 
   uploadDir: path.resolve(ROOT, process.env.UPLOAD_DIR || 'uploads'),
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 8),

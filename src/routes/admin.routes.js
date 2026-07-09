@@ -2,13 +2,20 @@
 // else requires the env-admin token (loadAdmin + requireAdminAuth).
 
 import { Router } from 'express'
-import { loadAdmin, requireAdminAuth } from '../middleware/auth.js'
+import { loadAdmin, requireAdminAuth, requireAdminKey } from '../middleware/auth.js'
 import * as admin from '../controllers/admin.controller.js'
 import { authLimiter } from '../middleware/rateLimit.js'
 
 const router = Router()
 
-// Auth (public). The login endpoint is a brute-force target — rate-limited.
+// Pre-shared key gate for the ENTIRE admin surface — including login. When
+// ADMIN_API_KEY is set, a request without a matching `X-Admin-Key` header 404s,
+// hiding the admin API (and its brute-force login target) from the public
+// internet. No-op when the key is unset. See middleware/auth.js `requireAdminKey`.
+router.use(requireAdminKey)
+
+// Auth (public — past the key gate). The login endpoint is a brute-force target
+// — rate-limited.
 router.post('/auth/login', authLimiter, admin.login)
 router.post('/auth/logout', admin.logout)
 
