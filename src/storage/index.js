@@ -47,7 +47,9 @@ const MIME_BY_EXT = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
+  // .svg intentionally omitted: uploads no longer accept SVG (see upload.js), and
+  // any legacy .svg on disk falls through to application/octet-stream below so it
+  // downloads instead of rendering its inline script same-origin (stored XSS).
 }
 
 function contentTypeFor(nameOrUrl, fallback) {

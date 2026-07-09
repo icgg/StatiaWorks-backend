@@ -4,6 +4,7 @@
 
 import { Router } from 'express'
 import { loadUser, requireAuth } from '../middleware/auth.js'
+import { requireVerified } from '../middleware/requireVerified.js'
 import { requireSeeker, requireEmployer } from '../middleware/requireRole.js'
 import { loadEmployer, requireActiveEmployer } from '../middleware/requireActiveEmployer.js'
 import { applicationUpload, resumeUpload, logoUpload, proofUpload, handleUploadError } from '../middleware/upload.js'
@@ -27,7 +28,8 @@ router.delete('/', account.deleteAccount)
 
 // ---- Seeker portal ----
 router.get('/applications', requireSeeker, seeker.listApplications)
-router.post('/applications', requireSeeker, applyLimiter, applicationUpload, handleUploadError, seeker.apply)
+// Applying reaches the employer (creates a record + emails them) → verified only.
+router.post('/applications', requireSeeker, requireVerified, applyLimiter, applicationUpload, handleUploadError, seeker.apply)
 router.patch('/applications/:id', requireSeeker, seeker.updateApplication)
 router.delete('/applications/:id', requireSeeker, seeker.deleteApplication)
 router.get('/profile', requireSeeker, seeker.getProfile)
@@ -39,15 +41,18 @@ emp.use(requireEmployer, loadEmployer)
 emp.get('/posts', employer.listPosts)
 // Job-posting flood guard: per-account AND per-IP (both limiters must pass).
 // Placed after requireActiveEmployer so req.account is populated for the
-// account-keyed limiter.
-emp.post('/posts', requireActiveEmployer, postingIpLimiter, postingAccountLimiter, employer.createPost)
-emp.put('/posts/:id', requireActiveEmployer, employer.updatePost)
-emp.patch('/posts/:id', requireActiveEmployer, employer.patchPost)
+// account-keyed limiter. requireVerified first — a listing goes on the public
+// board, so an unverified employer must verify before publishing.
+emp.post('/posts', requireVerified, requireActiveEmployer, postingIpLimiter, postingAccountLimiter, employer.createPost)
+emp.put('/posts/:id', requireVerified, requireActiveEmployer, employer.updatePost)
+emp.patch('/posts/:id', requireVerified, requireActiveEmployer, employer.patchPost)
 emp.delete('/posts/:id', requireActiveEmployer, employer.deletePost)
 emp.get('/posts/:id/applicants', employer.listApplicants)
-emp.patch('/posts/:postId/applicants/:applicantId', requireActiveEmployer, employer.setApplicantStatus)
+// Deciding on an applicant emails the seeker → verified only.
+emp.patch('/posts/:postId/applicants/:applicantId', requireVerified, requireActiveEmployer, employer.setApplicantStatus)
 emp.get('/company', employer.getCompany)
-emp.put('/company', requireActiveEmployer, uploadLimiter, logoUpload, handleUploadError, employer.updateCompany)
+// The company profile (incl. logo) shows on the public board → verified only.
+emp.put('/company', requireVerified, requireActiveEmployer, uploadLimiter, logoUpload, handleUploadError, employer.updateCompany)
 // Billing actions — intentionally WITHOUT requireActiveEmployer so a locked
 // employer can still pay to reactivate.
 emp.post('/billing/request-annual', invoice.requestAnnual)

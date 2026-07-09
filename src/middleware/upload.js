@@ -13,7 +13,10 @@ import { badRequest } from './error.js'
 const MAX_BYTES = env.maxUploadMb * 1024 * 1024
 
 const DOC_EXT = new Set(['.pdf', '.doc', '.docx'])
-const IMG_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg'])
+// NOTE: .svg is deliberately excluded. SVGs can carry inline <script>, and an
+// uploaded logo is served same-origin — opening it directly would execute that
+// script in the app's origin (stored XSS). Raster formats only.
+const IMG_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp'])
 
 function fileFilter(allowed) {
   return (req, file, cb) => {

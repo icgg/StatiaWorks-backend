@@ -26,6 +26,11 @@ function required(name, fallback) {
 const nodeEnv = process.env.NODE_ENV || 'development'
 const isProd = nodeEnv === 'production'
 
+// The insecure fallback used for local dev only. Production must override it —
+// see the hard-fail guard at the bottom of this file. A forgeable token secret
+// would let anyone mint a valid session (any account, including admin).
+const DEV_JWT_SECRET = 'dev-insecure-secret-change-me'
+
 // Allowed browser origins for CORS (and the base for email links). Dev and prod
 // keep separate lists so one .env can describe both; NODE_ENV picks the active
 // one. In production these are the deployed frontend hostname(s).
@@ -81,7 +86,7 @@ export const env = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   emailFrom: process.env.EMAIL_FROM || 'StatiaWorks <onboarding@resend.dev>',
 
-  jwtSecret: required('JWT_SECRET', 'dev-insecure-secret-change-me'),
+  jwtSecret: required('JWT_SECRET', DEV_JWT_SECRET),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
 
   adminEmail: (process.env.ADMIN_EMAIL || '').toLowerCase(),
@@ -140,6 +145,15 @@ export const env = {
     postingWindowMin: Number(process.env.RL_POSTING_WINDOW_MIN || 60),
     postingMax: Number(process.env.RL_POSTING_MAX || 10),
   },
+}
+
+// Fail fast in production on a missing/default JWT secret rather than booting
+// with a forgeable one. In development the insecure fallback is allowed (with a
+// warning from `required`) so local setup stays frictionless.
+if (isProd && (!process.env.JWT_SECRET || env.jwtSecret === DEV_JWT_SECRET)) {
+  throw new Error(
+    'JWT_SECRET must be set to a strong, unique value in production (the dev fallback is not allowed).',
+  )
 }
 
 if (isProd && !env.supabase.dbUrl) {
