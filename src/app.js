@@ -11,6 +11,7 @@ import apiRouter from './routes/index.js'
 import { notFound, errorHandler } from './middleware/error.js'
 import { globalLimiter } from './middleware/rateLimit.js'
 import { loadUser, loadAdmin } from './middleware/auth.js'
+import { logConnection } from './middleware/connectionLog.js'
 import { authorizeUpload } from './middleware/uploadAccess.js'
 import { serveUpload } from './storage/index.js'
 import { jobShare } from './controllers/share.controller.js'
@@ -58,6 +59,13 @@ export function createApp() {
   app.use(express.json({ limit: '2mb' }))
   app.use(express.urlencoded({ extended: true }))
   app.use(cookieParser())
+
+  // Connection log: record every request (IP, time, action, status, caller) into
+  // the in-memory ring buffer the admin console reads. Placed here so it captures
+  // all traffic — /uploads, /j/:id, and /api alike — including 404s and
+  // rate-limited responses. Noise (health check, preflight, the log's own
+  // endpoint) is filtered inside the middleware.
+  app.use(logConnection)
 
   // Serve uploaded files (résumés, cover letters, logos, proofs). Every request
   // is authorized first (authorizeUpload): logos are public, but résumés, cover

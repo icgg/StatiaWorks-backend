@@ -14,6 +14,7 @@ import { findFlaggedClusters } from '../utils/similarity.js'
 import { ACCOUNT_STATUS, POST_MODERATION } from '../validators/enums.js'
 import { shapeInvoice } from '../utils/invoices.js'
 import { reopenLockedEmployerListings } from '../utils/lockout.js'
+import { list as listConnections } from '../log/connectionLog.js'
 
 // ---- Auth ----------------------------------------------------------------
 
@@ -371,4 +372,31 @@ export const voidInvoice = asyncHandler(async (req, res) => {
   if (invoice.status === 'paid') throw badRequest('A paid invoice cannot be voided.')
   await db('invoices').where({ id }).update({ status: 'void' })
   res.json({ ok: true, status: 'void' })
+})
+
+// ---- Connection log ------------------------------------------------------
+
+// Compose a display "actor" for a logged connection: the env-admin by email, a
+// signed-in user as "employer #12" / "candidate #7", else an anonymous visitor.
+function shapeLogEntry(e) {
+  let actor = 'Guest'
+  if (e.adminEmail) actor = `Admin (${e.adminEmail})`
+  else if (e.accountId) actor = `${e.role === 'seeker' ? 'candidate' : e.role} #${e.accountId}`
+  return {
+    id: e.id,
+    time: e.ts,
+    actor,
+    ip: e.ip,
+    method: e.method,
+    path: e.path,
+    action: e.action,
+    status: e.status,
+    userAgent: e.userAgent,
+  }
+}
+
+// The in-memory connection log (last N requests, newest first). Live traffic
+// monitor — see middleware/connectionLog.js. Not persisted / not paginated.
+export const listConnectionLog = asyncHandler(async (req, res) => {
+  res.json(listConnections().map(shapeLogEntry))
 })

@@ -30,6 +30,8 @@ router.patch('/posts/:id', admin.setPostStatus)
 router.get('/flags', admin.listFlags)
 router.post('/flags/:id/resolve', admin.resolveFlag)
 
+router.get('/connections', admin.listConnectionLog)
+
 router.get('/invoices', admin.listInvoices)
 router.get('/invoices/:id', admin.getInvoice)
 router.post('/invoices/:id/verify', admin.verifyInvoice)

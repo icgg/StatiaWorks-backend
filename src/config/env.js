@@ -129,6 +129,13 @@ export const env = {
     annualDisplay: process.env.PRICE_ANNUAL_DISPLAY || '$50 / year',
   },
 
+  // Connection log: how many recent requests the in-memory ring buffer keeps
+  // (surfaced in the admin console as a live traffic monitor). Not persisted —
+  // it resets on restart. See middleware/connectionLog.js + log/connectionLog.js.
+  connectionLog: {
+    max: Number(process.env.CONN_LOG_MAX || 400),
+  },
+
   // Rate limiting (express-rate-limit). Windows in minutes, maxes are request
   // counts per window. `global` is a broad ceiling; the rest guard sensitive
   // endpoints (auth brute-force / email-send abuse, apply + upload spam, and
