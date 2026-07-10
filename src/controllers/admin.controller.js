@@ -15,7 +15,7 @@ import { ACCOUNT_STATUS, POST_MODERATION } from '../validators/enums.js'
 import { shapeInvoice } from '../utils/invoices.js'
 import { reopenLockedEmployerListings } from '../utils/lockout.js'
 import { list as listConnections } from '../log/connectionLog.js'
-import { renderBroadcast, sendBroadcastEmail, sendBroadcastCopy } from '../email/index.js'
+import { renderBroadcast, sendBroadcastEmail } from '../email/index.js'
 
 // ---- Auth ----------------------------------------------------------------
 
@@ -437,48 +437,42 @@ export const previewEmail = asyncHandler(async (req, res) => {
   res.json({ html })
 })
 
-// Send the composed email to one or more free-form recipients (strict).
+// Send the composed email as ONE standard message: the To list, plus optional
+// Cc/Bcc, exactly like a normal mail client. To and Cc recipients see each
+// other; Bcc stays hidden. (Use Bcc when addresses must stay private.)
 export const sendAdminEmail = asyncHandler(async (req, res) => {
   const { to, cc, bcc, subject, heading, message } = req.body || {}
   const recipients = parseRecipients(to)
   if (!recipients.length) throw badRequest('Add at least one recipient email address.')
-  if (recipients.length > 100) throw badRequest('Too many recipients (max 100 per send).')
-  const invalid = recipients.find((r) => !EMAIL_RE.test(r))
-  if (invalid) throw badRequest(`That doesn't look like a valid email address: ${invalid}`)
   if (!String(subject || '').trim()) throw badRequest('A subject is required.')
   if (!String(message || '').trim()) throw badRequest('A message is required.')
   const { ctaLabel, ctaUrl } = normalizeCta(req.body || {})
 
-  // CC/BCC are observer copies — deduped against the primary recipients (and
-  // each other) so nobody is emailed twice, then validated the same way.
-  const primary = new Set(recipients.map((r) => r.toLowerCase()))
-  const ccList = parseRecipients(cc).filter((r) => !primary.has(r.toLowerCase()))
-  ccList.forEach((r) => primary.add(r.toLowerCase()))
-  const bccList = parseRecipients(bcc).filter((r) => !primary.has(r.toLowerCase()))
-  const badCopy = [...ccList, ...bccList].find((r) => !EMAIL_RE.test(r))
-  if (badCopy) throw badRequest(`That doesn't look like a valid email address: ${badCopy}`)
+  // Cc/Bcc are deduped against the To list (and each other), so an address that
+  // already appears in a higher-priority field is dropped from the lower one.
+  const seen = new Set(recipients.map((r) => r.toLowerCase()))
+  const ccList = parseRecipients(cc).filter((r) => !seen.has(r.toLowerCase()) && seen.add(r.toLowerCase()))
+  const bccList = parseRecipients(bcc).filter((r) => !seen.has(r.toLowerCase()) && seen.add(r.toLowerCase()))
 
-  const content = { subject, heading, message, ctaLabel, ctaUrl }
+  if (seen.size > 100) throw badRequest('Too many recipients (max 100 per send).')
+  const invalid = [...recipients, ...ccList, ...bccList].find((r) => !EMAIL_RE.test(r))
+  if (invalid) throw badRequest(`That doesn't look like a valid email address: ${invalid}`)
 
-  // One send per primary recipient (each gets a private To:, not a shared CC/BCC).
-  const results = await Promise.all(
-    recipients.map((r) => sendBroadcastEmail({ to: r, ...content })),
-  )
-  const sent = results.filter((r) => r.ok).length
-
-  // A single extra send delivers one copy to all cc + bcc observers.
-  let copied = 0
-  if (ccList.length || bccList.length) {
-    const copy = await sendBroadcastCopy({ cc: ccList, bcc: bccList, ...content })
-    if (copy.ok) copied = ccList.length + bccList.length
-  }
+  const result = await sendBroadcastEmail({
+    to: recipients,
+    cc: ccList,
+    bcc: bccList,
+    subject,
+    heading,
+    message,
+    ctaLabel,
+    ctaUrl,
+  })
 
   res.json({
-    total: recipients.length,
-    sent,
-    failed: recipients.length - sent,
+    ok: result.ok,
+    to: recipients.length,
     cc: ccList.length,
     bcc: bccList.length,
-    copied,
   })
 })

@@ -36,23 +36,14 @@ export function sendApplicationResponseEmail({ email, name, company, jobTitle, m
 }
 
 // Admin-composed custom email. `renderBroadcast` builds the branded message for
-// the composer's live preview; `sendBroadcastEmail` sends it to one recipient.
-// Both share the same template so the preview is exactly what gets delivered.
+// the composer's live preview; `sendBroadcastEmail` delivers it as one standard
+// message (To + optional Cc/Bcc). Both share the same template so the preview is
+// exactly what gets delivered. `to`/`cc`/`bcc` may be a string or string[].
 export function renderBroadcast(input) {
   return broadcastEmail(input)
 }
 
-export function sendBroadcastEmail({ to, ...input }) {
+export function sendBroadcastEmail({ to, cc, bcc, ...input }) {
   const msg = broadcastEmail(input)
-  return sendEmail({ to, from: env.adminEmailFrom, ...msg })
-}
-
-// Send a single observer copy of the broadcast that carries the cc/bcc lists.
-// The To is the StatiaWorks mailbox itself (from === to) so the primary
-// recipients stay private — cc/bcc people receive exactly one copy, not one per
-// broadcast recipient. `cc`/`bcc` are arrays; at least one must be non-empty.
-export function sendBroadcastCopy({ cc, bcc, ...input }) {
-  const msg = broadcastEmail(input)
-  const to = env.adminEmailFrom.match(/<([^>]+)>/)?.[1] || env.adminEmailFrom
-  return sendEmail({ to, from: env.adminEmailFrom, cc, bcc, ...msg })
+  return sendEmail({ to, cc, bcc, from: env.adminEmailFrom, ...msg })
 }
