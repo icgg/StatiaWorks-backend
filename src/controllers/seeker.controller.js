@@ -43,7 +43,11 @@ function applicationsQuery(seekerId) {
 export const listApplications = asyncHandler(async (req, res) => {
   const seeker = await getSeeker(req.account.id)
   if (!seeker) throw notFoundError('Seeker profile not found.')
-  const rows = await applicationsQuery(seeker.id).orderBy('applications.date_applied', 'desc')
+  // Soft-deleted (seeker_hidden) rows are kept for the employer's record + the
+  // re-apply lock, but never shown back to the seeker.
+  const rows = await applicationsQuery(seeker.id)
+    .andWhere('applications.seeker_hidden', false)
+    .orderBy('applications.date_applied', 'desc')
   res.json(rows.map(shapeSeekerApplication))
 })
 
@@ -90,6 +94,7 @@ export const apply = asyncHandler(async (req, res) => {
     date_applied: new Date().toISOString().slice(0, 10),
     reviewed_at: null,
     seeker_seen: true,
+    seeker_hidden: false, // a fresh application is visible again to the seeker
     resume_url: resumeUrl,
     cover_url: coverUrl,
     form_data: formData,
@@ -144,11 +149,26 @@ export const updateApplication = asyncHandler(async (req, res) => {
 
   const action = req.body?.action
   if (action === 'withdraw') {
+    // Unsubmit is valid only on a still-pending application. Once the employer
+    // has decided (approved/rejected) the outcome is terminal and read-only for
+    // the seeker — this is what stops a withdraw→reapply round-trip from
+    // silently undoing the employer's one-time decision (see status.js). A
+    // withdrawn app is already gone.
+    if (app.status !== 'submitted') {
+      throw conflict('This application can no longer be unsubmitted.')
+    }
     await db('applications').where({ id }).update({ status: 'withdrawn' })
   } else if (action === 'reapply') {
+    // Re-apply only resurrects a withdrawn application, never a reviewed one.
+    if (app.status !== 'withdrawn') {
+      throw conflict('Only a withdrawn application can be re-submitted.')
+    }
     const job = await db('jobs').where({ id: app.job_id }).first()
     if (!job || job.status !== 'active') throw badRequest('This posting is no longer open.')
-    await db('applications').where({ id }).update({ status: 'submitted', reviewed_at: null, seeker_seen: true })
+    // Clear the stale decision fields so the resurrected row is genuinely fresh.
+    await db('applications')
+      .where({ id })
+      .update({ status: 'submitted', reviewed_at: null, seeker_seen: true, employer_response: null, seeker_hidden: false })
   } else if (action === 'seen') {
     await db('applications').where({ id }).update({ seeker_seen: true })
   } else {
@@ -159,11 +179,23 @@ export const updateApplication = asyncHandler(async (req, res) => {
   res.json(shapeSeekerApplication(row))
 })
 
+// Seeker "Delete" is a SOFT delete — it hides the application from the seeker's
+// own tracker but keeps the row, because (a) a reviewed application is the
+// employer's decision record / audit trail, and (b) the one-app-per-job
+// re-apply lock (see `apply`) reads this row, so hard-deleting would let a
+// rejected candidate wipe the rejection and re-apply. Only the employer
+// hard-deleting the application (deleteApplicant) truly removes it and frees a
+// re-apply. A still-pending app is also withdrawn on delete so it leaves the
+// employer's live queue (withdrawn apps are hidden from the employer).
 export const deleteApplication = asyncHandler(async (req, res) => {
   const seeker = await getSeeker(req.account.id)
   const id = intParam(req.params.id)
-  const count = await db('applications').where({ id, seeker_id: seeker.id }).del()
-  if (!count) throw notFoundError('Application not found.')
+  const app = await db('applications').where({ id, seeker_id: seeker.id }).first()
+  if (!app) throw notFoundError('Application not found.')
+
+  const patch = { seeker_hidden: true }
+  if (app.status === 'submitted') patch.status = 'withdrawn'
+  await db('applications').where({ id }).update(patch)
   res.json({ ok: true })
 })
 

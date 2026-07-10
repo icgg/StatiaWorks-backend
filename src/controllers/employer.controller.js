@@ -25,8 +25,10 @@ export const listPosts = asyncHandler(async (req, res) => {
     .orderBy('id', 'desc')
 
   const ids = jobs.map((j) => j.id)
+  // Withdrawn applications are invisible to the employer (they drop out of the
+  // counts, badges, and lists) — a seeker who unsubmits leaves no ghost row.
   const apps = ids.length
-    ? await db('applications').whereIn('job_id', ids).orderBy('date_applied', 'desc')
+    ? await db('applications').whereIn('job_id', ids).whereNot('status', 'withdrawn').orderBy('date_applied', 'desc')
     : []
   const byJob = new Map()
   for (const a of apps) {
@@ -136,7 +138,11 @@ export const deletePost = asyncHandler(async (req, res) => {
 export const listApplicants = asyncHandler(async (req, res) => {
   const postId = intParam(req.params.id)
   await ownedJob(req.employer.id, postId)
-  const rows = await db('applications').where({ job_id: postId }).orderBy('date_applied', 'desc')
+  // Withdrawn applications are hidden from the employer (see listPosts).
+  const rows = await db('applications')
+    .where({ job_id: postId })
+    .whereNot('status', 'withdrawn')
+    .orderBy('date_applied', 'desc')
   res.json(rows.map(shapeApplicant))
 })
 
@@ -196,6 +202,21 @@ async function notifySeekerOfResponse(seekerId, company, jobTitle, message) {
     console.error('[email] application-response alert failed:', err)
   }
 }
+
+// Hard-delete a single application from the employer's queue. Unlike the
+// seeker's soft Delete (which only hides the row), this physically removes it —
+// which also frees the seeker to apply to this job again, since the
+// one-app-per-job re-apply lock (seeker.controller `apply`) keys on the row
+// existing. Employer queue management + the deliberate escape valve for a
+// terminal decision.
+export const deleteApplicant = asyncHandler(async (req, res) => {
+  const postId = intParam(req.params.postId, 'postId')
+  const applicantId = intParam(req.params.applicantId, 'applicantId')
+  await ownedJob(req.employer.id, postId)
+  const count = await db('applications').where({ id: applicantId, job_id: postId }).del()
+  if (!count) throw notFoundError('Applicant not found.')
+  res.json({ ok: true })
+})
 
 // ---- Company profile -----------------------------------------------------
 

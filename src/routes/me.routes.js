@@ -50,6 +50,9 @@ emp.delete('/posts/:id', requireActiveEmployer, employer.deletePost)
 emp.get('/posts/:id/applicants', employer.listApplicants)
 // Deciding on an applicant emails the seeker → verified only.
 emp.patch('/posts/:postId/applicants/:applicantId', requireVerified, requireActiveEmployer, employer.setApplicantStatus)
+// Removing an applicant is a hard delete (frees the seeker to re-apply); no
+// email, so no requireVerified — matches the post-delete gating.
+emp.delete('/posts/:postId/applicants/:applicantId', requireActiveEmployer, employer.deleteApplicant)
 emp.get('/company', employer.getCompany)
 // The company profile (incl. logo) shows on the public board → verified only.
 emp.put('/company', requireVerified, requireActiveEmployer, uploadLimiter, logoUpload, handleUploadError, employer.updateCompany)
