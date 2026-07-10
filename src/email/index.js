@@ -44,5 +44,5 @@ export function renderBroadcast(input) {
 
 export function sendBroadcastEmail({ to, ...input }) {
   const msg = broadcastEmail(input)
-  return sendEmail({ to, ...msg })
+  return sendEmail({ to, from: env.adminEmailFrom, ...msg })
 }

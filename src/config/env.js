@@ -85,6 +85,9 @@ export const env = {
   // Email (Resend). Left blank in dev → the mailer logs to the console.
   resendApiKey: process.env.RESEND_API_KEY || '',
   emailFrom: process.env.EMAIL_FROM || 'StatiaWorks <onboarding@resend.dev>',
+  // Sender for admin-composed emails (the Email tab) — distinct from the
+  // transactional `emailFrom`.
+  adminEmailFrom: process.env.ADMIN_EMAIL_FROM || 'StatiaWorks <hello@statiaworks.com>',
 
   jwtSecret: required('JWT_SECRET', DEV_JWT_SECRET),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',

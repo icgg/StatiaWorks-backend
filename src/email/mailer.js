@@ -12,9 +12,11 @@ const resend = env.resendApiKey ? new Resend(env.resendApiKey) : null
 
 /**
  * Send one email. Resolves to { ok, id? , skipped? , error? }.
- * @param {{ to: string, subject: string, html: string, text?: string }} msg
+ * `from` defaults to the transactional sender (`env.emailFrom`); pass it to
+ * override (e.g. admin-composed mail sends from `env.adminEmailFrom`).
+ * @param {{ to: string, subject: string, html: string, text?: string, from?: string }} msg
  */
-export async function sendEmail({ to, subject, html, text }) {
+export async function sendEmail({ to, subject, html, text, from }) {
   if (!to) {
     console.warn('[email] skipped — no recipient')
     return { ok: false, skipped: true }
@@ -30,7 +32,7 @@ export async function sendEmail({ to, subject, html, text }) {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: env.emailFrom,
+      from: from || env.emailFrom,
       to,
       subject,
       html,

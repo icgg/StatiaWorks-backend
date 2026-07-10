@@ -2,6 +2,8 @@
 // message. Every template returns { subject, html, text }. Styles are inlined
 // and the layout is table-based for broad email-client compatibility.
 
+import { marked } from 'marked'
+
 const OCEAN = '#103D5D'
 const TEAL = '#0E7C7B'
 const GOLD = '#E3A11A'
@@ -81,23 +83,47 @@ const p = (html) =>
 const fallbackLink = (href) =>
   `<p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:${MUTED};">If the button doesn't work, copy and paste this link into your browser:<br /><a href="${href}" style="color:${TEAL};word-break:break-all;">${href}</a></p>`
 
-// Escape user-supplied text before interpolating it into HTML.
-const escapeHtml = (s) =>
-  String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+// Inline styles applied to each element the Markdown renderer can emit. Email
+// clients (notably classic Outlook, which renders via the Word engine) ignore
+// <style> blocks and default tag styling, so every block/inline element must
+// carry its own inline CSS — that's what this map injects.
+const MD_STYLES = {
+  p: `margin:0 0 16px;font-size:15px;line-height:1.6;color:${INK};`,
+  h1: `margin:26px 0 12px;font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:1.3;color:${OCEAN};font-weight:600;`,
+  h2: `margin:22px 0 10px;font-family:Georgia,'Times New Roman',serif;font-size:19px;line-height:1.3;color:${OCEAN};font-weight:600;`,
+  h3: `margin:20px 0 8px;font-size:16px;line-height:1.4;color:${OCEAN};font-weight:700;`,
+  ul: `margin:0 0 16px;padding-left:22px;font-size:15px;line-height:1.6;color:${INK};`,
+  ol: `margin:0 0 16px;padding-left:22px;font-size:15px;line-height:1.6;color:${INK};`,
+  li: `margin:0 0 6px;`,
+  a: `color:${TEAL};text-decoration:underline;`,
+  strong: `font-weight:700;`,
+  em: `font-style:italic;`,
+  del: `text-decoration:line-through;`,
+  blockquote: `margin:0 0 16px;padding:12px 16px;border-left:3px solid ${TEAL};background:${SAND};border-radius:0 8px 8px 0;font-size:15px;line-height:1.6;color:${INK};font-style:italic;`,
+  code: `font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:${SAND};padding:2px 5px;border-radius:4px;`,
+  pre: `margin:0 0 16px;padding:12px 14px;background:${SAND};border-radius:8px;overflow:auto;`,
+  hr: `border:none;border-top:1px solid #e7ddc9;margin:22px 0;`,
+}
 
-// Turn a plain-text message into branded paragraphs: blank lines split
-// paragraphs; single newlines within a block become <br>.
-function textToParagraphs(message) {
-  return String(message ?? '')
-    .replace(/\r\n/g, '\n')
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block) => p(escapeHtml(block).replace(/\n/g, '<br />')))
-    .join('')
+// Inject the inline style onto every opening tag the renderer produced. Works
+// on tags with or without existing attributes (e.g. `<a href="…">`), leaves
+// closing tags alone, and never double-styles.
+function inlineStyles(html) {
+  const tags = Object.keys(MD_STYLES).join('|')
+  const re = new RegExp(`<(${tags})((?:\\s[^>]*)?)>`, 'g')
+  return html.replace(re, (m, tag, attrs) =>
+    /\bstyle=/.test(attrs) ? m : `<${tag}${attrs} style="${MD_STYLES[tag]}">`,
+  )
+}
+
+// Render the admin's Markdown message into email-safe, inline-styled HTML.
+// `breaks: true` maps a single newline to <br> (matching how people expect a
+// composed message to wrap); blank lines become new paragraphs.
+function markdownToHtml(message) {
+  const src = String(message ?? '').trim()
+  if (!src) return ''
+  const raw = marked.parse(src, { async: false, gfm: true, breaks: true })
+  return inlineStyles(raw)
 }
 
 // ---- Templates -----------------------------------------------------------
@@ -178,12 +204,14 @@ export function newApplicantEmail({ company, jobTitle, applicantName, headline, 
   }
 }
 
-// Admin-composed custom email. `message` is plain text (line breaks preserved);
-// an optional call-to-action button is appended when both label and URL are set.
-// Uses the neutral broadcast footer, not the transactional one.
+// Admin-composed custom email. `message` is Markdown, rendered into email-safe
+// inline-styled HTML; an optional call-to-action button is appended when both
+// label and URL are set. Uses the neutral broadcast footer, not the
+// transactional one. (The raw Markdown doubles as the plain-text part — it's
+// designed to read cleanly unrendered.)
 export function broadcastEmail({ subject, heading, message, ctaLabel, ctaUrl }) {
   const hasCta = Boolean(String(ctaLabel || '').trim() && String(ctaUrl || '').trim())
-  const body = textToParagraphs(message) + (hasCta ? button(ctaLabel.trim(), ctaUrl.trim()) : '')
+  const body = markdownToHtml(message) + (hasCta ? button(ctaLabel.trim(), ctaUrl.trim()) : '')
   const title = String(heading || '').trim() || String(subject || '').trim() || 'A message from StatiaWorks'
   const text =
     `${String(message ?? '').trim()}` +
