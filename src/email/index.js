@@ -46,3 +46,13 @@ export function sendBroadcastEmail({ to, ...input }) {
   const msg = broadcastEmail(input)
   return sendEmail({ to, from: env.adminEmailFrom, ...msg })
 }
+
+// Send a single observer copy of the broadcast that carries the cc/bcc lists.
+// The To is the StatiaWorks mailbox itself (from === to) so the primary
+// recipients stay private — cc/bcc people receive exactly one copy, not one per
+// broadcast recipient. `cc`/`bcc` are arrays; at least one must be non-empty.
+export function sendBroadcastCopy({ cc, bcc, ...input }) {
+  const msg = broadcastEmail(input)
+  const to = env.adminEmailFrom.match(/<([^>]+)>/)?.[1] || env.adminEmailFrom
+  return sendEmail({ to, from: env.adminEmailFrom, cc, bcc, ...msg })
+}

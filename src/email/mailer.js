@@ -14,9 +14,11 @@ const resend = env.resendApiKey ? new Resend(env.resendApiKey) : null
  * Send one email. Resolves to { ok, id? , skipped? , error? }.
  * `from` defaults to the transactional sender (`env.emailFrom`); pass it to
  * override (e.g. admin-composed mail sends from `env.adminEmailFrom`).
- * @param {{ to: string, subject: string, html: string, text?: string, from?: string }} msg
+ * `cc`/`bcc` are optional (string or string[]) — used by the admin broadcast to
+ * copy observers on a single send.
+ * @param {{ to: string, subject: string, html: string, text?: string, from?: string, cc?: string|string[], bcc?: string|string[] }} msg
  */
-export async function sendEmail({ to, subject, html, text, from }) {
+export async function sendEmail({ to, subject, html, text, from, cc, bcc }) {
   if (!to) {
     console.warn('[email] skipped — no recipient')
     return { ok: false, skipped: true }
@@ -24,8 +26,12 @@ export async function sendEmail({ to, subject, html, text, from }) {
 
   // No API key configured → log to the console (dev fallback).
   if (!resend) {
+    const copies = [
+      cc?.length ? `\n  cc: ${[].concat(cc).join(', ')}` : '',
+      bcc?.length ? `\n  bcc: ${[].concat(bcc).join(', ')}` : '',
+    ].join('')
     console.log(
-      `\n[email:dev] would send to ${to}\n  subject: ${subject}\n  (set RESEND_API_KEY to deliver for real)\n`,
+      `\n[email:dev] would send to ${to}\n  subject: ${subject}${copies}\n  (set RESEND_API_KEY to deliver for real)\n`,
     )
     return { ok: true, skipped: true }
   }
@@ -37,6 +43,9 @@ export async function sendEmail({ to, subject, html, text, from }) {
       subject,
       html,
       text,
+      // Only include cc/bcc when present — Resend rejects empty arrays.
+      ...(cc?.length ? { cc } : {}),
+      ...(bcc?.length ? { bcc } : {}),
     })
     if (error) {
       console.error(`[email] delivery failed to ${to}:`, error)
