@@ -15,6 +15,7 @@ import { ACCOUNT_STATUS, POST_MODERATION } from '../validators/enums.js'
 import { shapeInvoice } from '../utils/invoices.js'
 import { reopenLockedEmployerListings } from '../utils/lockout.js'
 import { list as listConnections } from '../log/connectionLog.js'
+import { renderBroadcast, sendBroadcastEmail } from '../email/index.js'
 
 // ---- Auth ----------------------------------------------------------------
 
@@ -399,4 +400,59 @@ function shapeLogEntry(e) {
 // monitor — see middleware/connectionLog.js. Not persisted / not paginated.
 export const listConnectionLog = asyncHandler(async (req, res) => {
   res.json(listConnections().map(shapeLogEntry))
+})
+
+// ---- Admin-composed email (broadcast) ------------------------------------
+// The admin composes a custom message from the Email tab; it's rendered into
+// the branded StatiaWorks shell and sent from the custom domain via Resend.
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// Split a free-form recipients field (commas, semicolons, or newlines) into a
+// trimmed, de-duplicated list of addresses.
+function parseRecipients(raw) {
+  const seen = new Set()
+  return String(raw || '')
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter((s) => s && !seen.has(s.toLowerCase()) && seen.add(s.toLowerCase()))
+}
+
+// Validate the optional call-to-action button: both label and URL, or neither.
+function normalizeCta({ ctaLabel, ctaUrl }) {
+  const label = String(ctaLabel || '').trim()
+  const url = String(ctaUrl || '').trim()
+  if (!label && !url) return { ctaLabel: '', ctaUrl: '' }
+  if (!url) throw badRequest('Add a URL for the button, or clear the button label.')
+  if (!label) throw badRequest('Add a label for the button, or clear the button URL.')
+  if (!/^https?:\/\//i.test(url)) throw badRequest('The button URL must start with http:// or https://')
+  return { ctaLabel: label, ctaUrl: url }
+}
+
+// Render the branded email for the composer's live preview — no send, lenient
+// (a half-filled button is simply omitted rather than rejected while typing).
+export const previewEmail = asyncHandler(async (req, res) => {
+  const { subject, heading, message, ctaLabel, ctaUrl } = req.body || {}
+  const { html } = renderBroadcast({ subject, heading, message, ctaLabel, ctaUrl })
+  res.json({ html })
+})
+
+// Send the composed email to one or more free-form recipients (strict).
+export const sendAdminEmail = asyncHandler(async (req, res) => {
+  const { to, subject, heading, message } = req.body || {}
+  const recipients = parseRecipients(to)
+  if (!recipients.length) throw badRequest('Add at least one recipient email address.')
+  if (recipients.length > 100) throw badRequest('Too many recipients (max 100 per send).')
+  const invalid = recipients.find((r) => !EMAIL_RE.test(r))
+  if (invalid) throw badRequest(`That doesn't look like a valid email address: ${invalid}`)
+  if (!String(subject || '').trim()) throw badRequest('A subject is required.')
+  if (!String(message || '').trim()) throw badRequest('A message is required.')
+  const { ctaLabel, ctaUrl } = normalizeCta(req.body || {})
+
+  // One send per recipient (each gets a private To:, not a shared CC/BCC).
+  const results = await Promise.all(
+    recipients.map((r) => sendBroadcastEmail({ to: r, subject, heading, message, ctaLabel, ctaUrl })),
+  )
+  const sent = results.filter((r) => r.ok).length
+  res.json({ total: recipients.length, sent, failed: recipients.length - sent })
 })

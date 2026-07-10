@@ -39,6 +39,10 @@ router.post('/flags/:id/resolve', admin.resolveFlag)
 
 router.get('/connections', admin.listConnectionLog)
 
+// Admin-composed custom email: live preview (no send) + send to recipients.
+router.post('/email/preview', admin.previewEmail)
+router.post('/email', admin.sendAdminEmail)
+
 router.get('/invoices', admin.listInvoices)
 router.get('/invoices/:id', admin.getInvoice)
 router.post('/invoices/:id/verify', admin.verifyInvoice)

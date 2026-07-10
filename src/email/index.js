@@ -4,7 +4,7 @@
 
 import { env } from '../config/env.js'
 import { sendEmail } from './mailer.js'
-import { verificationEmail, passwordResetEmail, newApplicantEmail, applicationResponseEmail } from './templates.js'
+import { verificationEmail, passwordResetEmail, newApplicantEmail, applicationResponseEmail, broadcastEmail } from './templates.js'
 
 const appLink = (path) => `${env.appUrl}${path}`
 
@@ -33,4 +33,16 @@ export function sendNewApplicantEmail({ email, company, jobId, jobTitle, applica
 export function sendApplicationResponseEmail({ email, name, company, jobTitle, message }) {
   const msg = applicationResponseEmail({ name, company, jobTitle, message, link: appLink('/portal') })
   return sendEmail({ to: email, ...msg })
+}
+
+// Admin-composed custom email. `renderBroadcast` builds the branded message for
+// the composer's live preview; `sendBroadcastEmail` sends it to one recipient.
+// Both share the same template so the preview is exactly what gets delivered.
+export function renderBroadcast(input) {
+  return broadcastEmail(input)
+}
+
+export function sendBroadcastEmail({ to, ...input }) {
+  const msg = broadcastEmail(input)
+  return sendEmail({ to, ...msg })
 }

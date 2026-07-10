@@ -10,8 +10,17 @@ const PAPER = '#FBF8F1'
 const INK = '#1c2b36'
 const MUTED = '#5b6b77'
 
-// Shared shell: brand header bar, content card, footer. `body` is trusted HTML.
-function layout({ heading, body, preheader = '' }) {
+// Default footer for transactional mail (account-activity messages).
+const DEFAULT_FOOTER = `<p style="margin:0 0 4px;">StatiaWorks — the local job board for Sint Eustatius.</p>
+                <p style="margin:0;">You received this email because of activity on your StatiaWorks account.</p>`
+
+// Footer for admin-composed broadcasts — no "account activity" claim.
+const BROADCAST_FOOTER = `<p style="margin:0 0 4px;">StatiaWorks — the local job board for Sint Eustatius.</p>
+                <p style="margin:0;">Sent by the StatiaWorks team.</p>`
+
+// Shared shell: brand header bar, content card, footer. `body` is trusted HTML;
+// `footer` defaults to the transactional footer.
+function layout({ heading, body, preheader = '', footer = DEFAULT_FOOTER }) {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -44,8 +53,7 @@ function layout({ heading, body, preheader = '' }) {
             <!-- Footer -->
             <tr>
               <td style="padding:22px 6px 0;color:${MUTED};font-size:12px;line-height:1.6;">
-                <p style="margin:0 0 4px;">StatiaWorks — the local job board for Sint Eustatius.</p>
-                <p style="margin:0;">You received this email because of activity on your StatiaWorks account.</p>
+                ${footer}
               </td>
             </tr>
           </table>
@@ -72,6 +80,25 @@ const p = (html) =>
 
 const fallbackLink = (href) =>
   `<p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:${MUTED};">If the button doesn't work, copy and paste this link into your browser:<br /><a href="${href}" style="color:${TEAL};word-break:break-all;">${href}</a></p>`
+
+// Escape user-supplied text before interpolating it into HTML.
+const escapeHtml = (s) =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+// Turn a plain-text message into branded paragraphs: blank lines split
+// paragraphs; single newlines within a block become <br>.
+function textToParagraphs(message) {
+  return String(message ?? '')
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => p(escapeHtml(block).replace(/\n/g, '<br />')))
+    .join('')
+}
 
 // ---- Templates -----------------------------------------------------------
 
@@ -148,5 +175,23 @@ export function newApplicantEmail({ company, jobTitle, applicantName, headline, 
       preheader: `${who} applied to ${jobTitle}.`,
     }),
     text: `${who} just applied to your posting "${jobTitle}".${headline ? `\n\n"${headline}"` : ''}${appliedOn ? `\nApplied on ${appliedOn}.` : ''}\n\nReview the application:\n${link}\n\n— StatiaWorks`,
+  }
+}
+
+// Admin-composed custom email. `message` is plain text (line breaks preserved);
+// an optional call-to-action button is appended when both label and URL are set.
+// Uses the neutral broadcast footer, not the transactional one.
+export function broadcastEmail({ subject, heading, message, ctaLabel, ctaUrl }) {
+  const hasCta = Boolean(String(ctaLabel || '').trim() && String(ctaUrl || '').trim())
+  const body = textToParagraphs(message) + (hasCta ? button(ctaLabel.trim(), ctaUrl.trim()) : '')
+  const title = String(heading || '').trim() || String(subject || '').trim() || 'A message from StatiaWorks'
+  const text =
+    `${String(message ?? '').trim()}` +
+    (hasCta ? `\n\n${ctaLabel.trim()}: ${ctaUrl.trim()}` : '') +
+    `\n\n— StatiaWorks`
+  return {
+    subject: String(subject || '').trim() || 'A message from StatiaWorks',
+    html: layout({ heading: title, body, preheader: '', footer: BROADCAST_FOOTER }),
+    text,
   }
 }

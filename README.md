@@ -57,6 +57,14 @@ scripts/
 ```
 
 ## Notes
+- **Module system (ESM):** the backend is **ES modules** (`"type": "module"` in
+  `package.json`) — `import`/`export`, not `require`. Chosen for **parity with the
+  Vite frontends** (`../app`, `../admin`) so the whole repo speaks one dialect, and
+  to stay with the ecosystem's default direction; it's first-class in modern Node
+  (top-level `await`, `import.meta.url`). Consequences to know: relative imports need
+  the `.js` extension (`'../db/knex.js'`), `__dirname` is reconstructed via
+  `import.meta.url` (`config/env.js`), and any config files that tools `require`
+  should be `.cjs`. Full trade-off analysis in **`ESM_VS_COMMONJS.md`**.
 - **Environments / Supabase:** `NODE_ENV` toggles the DB — `development` uses the local
   Postgres (`DATABASE_URL`/`PG*`), `production` uses **Supabase** (`SUPABASE_DB_URL`, SSL)
   and the `*_PROD` frontend hostnames (`APP_ORIGINS_PROD`, `APP_URL_PROD`). Supabase is
